@@ -1,0 +1,34 @@
+name: nexus_app
+description: "Nexus — Smart Expense Tracking & Loyalty Platform"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  qr_flutter: ^4.1.0
+  provider: ^6.1.2
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: false
+  ios: true
+  image_path: "assets/icons/app_icon.png"
+  ios_min_target: "13.0"
+  remove_alpha_ios: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/

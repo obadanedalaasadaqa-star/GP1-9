@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  name          String
+  serialNumber  String   @unique
+  loyaltyPoints Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  receipts Receipt[]
+
+  @@map("nexus_users")
+}
+
+// Future: receipt model (Phase 2)
+model Receipt {
+  id          String   @id @default(uuid())
+  userId      String
+  storeName   String
+  category    String
+  totalAmount Float
+  items       Json
+  pointsEarned Int     @default(0)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("nexus_receipts")
+}
