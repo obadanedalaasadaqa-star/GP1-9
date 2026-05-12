@@ -70,65 +70,91 @@ class ApiClient {
     required String email,
     required String password,
   }) async {
-    final res = await http.post(
-      Uri.parse('${AppConfig.baseUrl}/auth/register'),
-      headers: await _headers(),
-      body: jsonEncode({'name': name, 'email': email, 'password': password}),
-    ).timeout(_kTimeout, onTimeout: () => throw ApiException('Request timed out.'));
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/auth/register'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'name': name,
+            'email': email,
+            'password': password,
+          }),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
     final data = _parse(res);
-    return (token: data['token'] as String, user: User.fromJson(data['user'] as Map<String, dynamic>));
+    return (
+      token: data['token'] as String,
+      user: User.fromJson(data['user'] as Map<String, dynamic>),
+    );
   }
 
   static Future<({String token, User user})> login({
     required String email,
     required String password,
   }) async {
-    final res = await http.post(
-      Uri.parse('${AppConfig.baseUrl}/auth/login'),
-      headers: await _headers(),
-      body: jsonEncode({'email': email, 'password': password}),
-    ).timeout(_kTimeout, onTimeout: () => throw ApiException('Request timed out.'));
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/auth/login'),
+          headers: await _headers(),
+          body: jsonEncode({'email': email, 'password': password}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
     final data = _parse(res);
-    return (token: data['token'] as String, user: User.fromJson(data['user'] as Map<String, dynamic>));
+    return (
+      token: data['token'] as String,
+      user: User.fromJson(data['user'] as Map<String, dynamic>),
+    );
   }
 
   // ── User ───────────────────────────────────────────────────────
   static Future<User> getMe() async {
-    final res = await http.get(
-      Uri.parse('${AppConfig.baseUrl}/user/me'),
-      headers: await _headers(auth: true),
-    ).timeout(_kTimeout, onTimeout: () => throw ApiException('Request timed out.'));
+    final res = await http
+        .get(
+          Uri.parse('${AppConfig.baseUrl}/user/me'),
+          headers: await _headers(auth: true),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
     return User.fromJson(_parse(res));
   }
 
   static Future<User> updateName(String name) async {
-    final res = await http.patch(
-      Uri.parse('${AppConfig.baseUrl}/user/me'),
-      headers: await _headers(auth: true),
-      body: jsonEncode({'name': name}),
-    ).timeout(_kTimeout, onTimeout: () => throw ApiException('Request timed out.'));
+    final res = await http
+        .patch(
+          Uri.parse('${AppConfig.baseUrl}/user/me'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({'name': name}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
     return User.fromJson(_parse(res));
   }
 
   // ── Receipts ───────────────────────────────────────────────────
   static Future<List<Receipt>> getReceipts() async {
-    final res = await http.get(
-      Uri.parse('${AppConfig.baseUrl}/user/receipts'),
-      headers: await _headers(auth: true),
-    ).timeout(_kTimeout, onTimeout: () => throw ApiException('Request timed out.'));
+    final res = await http
+        .get(
+          Uri.parse('${AppConfig.baseUrl}/user/receipts'),
+          headers: await _headers(auth: true),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
     final list = jsonDecode(res.body) as List<dynamic>;
     return list
         .map((e) => Receipt.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  /// Seeds the 7 demo receipts for the current user (server no-ops if already seeded).
-  static Future<bool> seedReceipts() async {
-    final res = await http.post(
-      Uri.parse('${AppConfig.baseUrl}/receipts/seed'),
-      headers: await _headers(auth: true),
-    ).timeout(_kTimeout, onTimeout: () => throw ApiException('Request timed out.'));
-    final data = _parse(res);
-    return data['seeded'] as bool? ?? false;
-  }
 }

@@ -79,7 +79,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user       = context.watch<AuthProvider>().user!;
+    final user       = context.watch<AuthProvider>().user;
+    if (user == null) return const SizedBox.shrink();
     final isDark     = context.watch<ThemeProvider>().isDark;
     final firstName  = user.name.split(' ').first;
 

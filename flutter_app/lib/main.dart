@@ -137,11 +137,13 @@ class _SplashScreenState extends State<_SplashScreen>
       if (status == AnimationStatus.completed && mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 500),
-            pageBuilder: (context, animation, secondaryAnimation) => FadeTransition(
-              opacity: animation,
-              child: const _Root(),
-            ),
+            transitionDuration: const Duration(milliseconds: 400),
+            opaque: false,
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                const _Root(),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) =>
+                    FadeTransition(opacity: animation, child: child),
           ),
         );
       }
