@@ -36,11 +36,8 @@ cd backend
 # Install dependencies
 npm install
 
-# Copy the environment file and fill in the values
+# Copy the environment file — credentials are already included
 cp .env.example .env
-```
-
-Open `.env` and replace the placeholder values with the actual Supabase credentials and JWT secret. Get these from the project owner.
 
 ```bash
 # Generate the Prisma client
