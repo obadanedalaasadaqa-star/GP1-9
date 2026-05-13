@@ -39,7 +39,6 @@ npm install
 # Copy the environment file — credentials are already included
 cp .env.example .env
 
-```bash
 # Generate the Prisma client
 npx prisma generate
 
