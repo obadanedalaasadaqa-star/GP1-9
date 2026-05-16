@@ -11,8 +11,7 @@ A Flutter mobile app that lets users scan and store receipts, track spending by 
 ```
 nexus_project_v1/
 ├── flutter_app/   # Mobile app (Flutter/Dart)
-├── backend/       # REST API (Node.js, Express, Prisma)
-└── frontend/      # Admin/web dashboard (React, Vite)
+└── backend/       # REST API (Node.js, Express, Prisma)
 ```
 
 ---
@@ -86,30 +85,13 @@ flutter run
 
 ---
 
-## 3 — Frontend (Web Dashboard) Setup
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the dev server (runs on port 5173)
-npm run dev
-```
-
-Open `http://localhost:5173` in your browser.
-
----
-
 ## Running Everything Together
 
 Start each part in a separate terminal in this order:
 
 ```
-Terminal 1 → cd backend  && npm run dev
-Terminal 2 → cd frontend && npm run dev
-Terminal 3 → cd flutter_app && flutter run
+Terminal 1 → cd backend    && npm run dev
+Terminal 2 → cd flutter_app && flutter run
 ```
 
 ---
@@ -135,4 +117,3 @@ All routes except `/auth/*` require an `Authorization: Bearer <token>` header.
 - **Mobile:** Flutter, Dart, Provider, shared_preferences
 - **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken
 - **Database:** Supabase (PostgreSQL)
-- **Web:** React, Vite, Axios
