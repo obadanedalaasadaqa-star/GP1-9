@@ -20,7 +20,8 @@ nexus_project_v1/
 
 | Tool | Version |
 |---|---|
-| Flutter SDK | 3.x or later |
+| Flutter SDK | 3.11 or later |
+| Dart SDK | 3.11 or later |
 | Node.js | 18.x or later |
 | npm | 9.x or later |
 | Android Studio / Xcode | For running the Flutter app |
@@ -40,6 +41,9 @@ cp .env.example .env
 
 # Generate the Prisma client
 npx prisma generate
+
+# Push the schema to the database (first time only)
+npm run db:push
 
 # Start the development server (runs on port 3001 by default)
 npm run dev
@@ -114,6 +118,6 @@ All routes except `/auth/*` require an `Authorization: Bearer <token>` header.
 
 ## Tech Stack
 
-- **Mobile:** Flutter, Dart, Provider, shared_preferences
-- **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken
+- **Mobile:** Flutter 3.11, Dart, Provider, http, shared_preferences, qr_flutter, google_fonts
+- **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken, uuid
 - **Database:** Supabase (PostgreSQL)
