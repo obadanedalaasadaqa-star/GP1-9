@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
+const { normalizeJordanPhone } = require('../lib/phone');
 
 const router = express.Router();
 
@@ -10,6 +11,9 @@ const SAFE_SELECT = {
   id: true,
   email: true,
   name: true,
+  firstName: true,
+  lastName: true,
+  phone: true,
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
@@ -30,19 +34,34 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// PATCH /api/user/me  — update name only for now
+// PATCH /api/user/me  — update first name, last name, and phone
 router.patch('/me', async (req, res) => {
-  const { name } = req.body ?? {};
-  if (!name?.trim()) return res.status(400).json({ error: 'Name is required.' });
+  const firstName = req.body?.firstName?.trim();
+  const lastName  = req.body?.lastName?.trim();
+  if (!firstName || !lastName) {
+    return res.status(400).json({ error: 'First and last name are required.' });
+  }
+  const data = { firstName, lastName, name: `${firstName} ${lastName}` };
+
+  if (req.body?.phone) {
+    const phone = normalizeJordanPhone(req.body.phone);
+    if (!phone) {
+      return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
+    }
+    data.phone = phone;
+  }
 
   try {
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: { name: name.trim() },
+      data,
       select: SAFE_SELECT,
     });
     res.json(user);
   } catch (err) {
+    if (err.code === 'P2002') {
+      return res.status(409).json({ error: 'Phone number already registered.' });
+    }
     console.error('[user/patch]', err);
     res.status(500).json({ error: 'Failed to update profile.' });
   }

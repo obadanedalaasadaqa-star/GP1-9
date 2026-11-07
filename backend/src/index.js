@@ -44,6 +44,25 @@ async function start() {
   `);
   console.log('   DB: nexus_receipts table ready');
 
+  // First/last name + phone on users (safe to run every boot)
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "firstName" TEXT,
+      ADD COLUMN IF NOT EXISTS "lastName"  TEXT,
+      ADD COLUMN IF NOT EXISTS phone       TEXT;
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS nexus_users_phone_key ON nexus_users(phone);
+  `);
+  // Backfill older accounts: split the existing full name at the first space
+  await prisma.$executeRawUnsafe(`
+    UPDATE nexus_users
+       SET "firstName" = split_part(trim(name), ' ', 1),
+           "lastName"  = trim(substr(trim(name), length(split_part(trim(name), ' ', 1)) + 1))
+     WHERE "firstName" IS NULL;
+  `);
+  console.log('   DB: nexus_users name/phone columns ready');
+
   app.listen(PORT, () => {
     console.log(`\n🔷 Nexus Backend running on http://localhost:${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/api/health\n`);

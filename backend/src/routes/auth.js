@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const prisma = require('../lib/prisma');
+const { normalizeJordanPhone } = require('../lib/phone');
 
 const router = express.Router();
 
@@ -10,6 +11,9 @@ const SAFE_USER_SELECT = {
   id: true,
   email: true,
   name: true,
+  firstName: true,
+  lastName: true,
+  phone: true,
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
@@ -26,10 +30,18 @@ function signToken(userId) {
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { email, password, name } = req.body ?? {};
+  const { email, password } = req.body ?? {};
+  const firstName = req.body?.firstName?.trim();
+  const lastName  = req.body?.lastName?.trim();
 
-  if (!email || !password || !name) {
-    return res.status(400).json({ error: 'Name, email, and password are required.' });
+  if (!email || !password || !firstName || !lastName || !req.body?.phone) {
+    return res.status(400).json({
+      error: 'First name, last name, phone, email, and password are required.',
+    });
+  }
+  const phone = normalizeJordanPhone(req.body.phone);
+  if (!phone) {
+    return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
   }
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
@@ -38,12 +50,18 @@ router.post('/register', async (req, res) => {
   try {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already registered.' });
+    const phoneTaken = await prisma.user.findUnique({ where: { phone } });
+    if (phoneTaken) return res.status(409).json({ error: 'Phone number already registered.' });
 
     const hashed = await bcrypt.hash(password, 12);
     const serialNumber = generateSerial();
 
     const user = await prisma.user.create({
-      data: { email, password: hashed, name, serialNumber },
+      data: {
+        email, password: hashed, serialNumber,
+        firstName, lastName, phone,
+        name: `${firstName} ${lastName}`,
+      },
       select: SAFE_USER_SELECT,
     });
 

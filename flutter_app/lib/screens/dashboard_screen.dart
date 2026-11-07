@@ -82,7 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final user       = context.watch<AuthProvider>().user;
     if (user == null) return const SizedBox.shrink();
     final isDark     = context.watch<ThemeProvider>().isDark;
-    final firstName  = user.name.split(' ').first;
+    final firstName  = user.firstName;
 
     final bg          = isDark ? AppColors.bg      : AppColors.bgLight;
     final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;

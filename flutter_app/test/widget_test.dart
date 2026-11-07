@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexus_app/core/receipt_model.dart';
 import 'package:nexus_app/core/user_model.dart';
+import 'package:nexus_app/core/validators.dart';
 
 void main() {
   // ─── Receipt.totalsByCategory ───────────────────────────────────────────────
@@ -143,6 +144,57 @@ void main() {
       final pattern = RegExp(r'^NXS-[A-F0-9]{5}-[A-F0-9]{5}$');
       expect(pattern.hasMatch(user.serialNumber), isTrue);
     });
+
+    test('parses firstName, lastName, and phone', () {
+      final json = {
+        'id': 'user-123',
+        'email': 'noor@gmail.com',
+        'name': 'Noor Assaf',
+        'firstName': 'Noor',
+        'lastName': 'Assaf',
+        'phone': '+962791234567',
+        'serialNumber': 'NXS-442F8-AA1CC',
+        'loyaltyPoints': 0,
+        'createdAt': '2026-05-16T18:52:45.546Z',
+      };
+      final user = User.fromJson(json);
+      expect(user.firstName, 'Noor');
+      expect(user.lastName, 'Assaf');
+      expect(user.phone, '+962791234567');
+    });
+
+    test('falls back to splitting name when firstName/lastName are missing', () {
+      final json = {
+        'id': 'user-123',
+        'email': 'noor@gmail.com',
+        'name': 'Noor Al Assaf',
+        'serialNumber': 'NXS-442F8-AA1CC',
+        'loyaltyPoints': 0,
+        'createdAt': '2026-05-16T18:52:45.546Z',
+      };
+      final user = User.fromJson(json);
+      expect(user.firstName, 'Noor');
+      expect(user.lastName, 'Al Assaf');
+      expect(user.phone, isNull);
+    });
+  });
+
+  // ─── isValidJordanPhone ─────────────────────────────────────────────────────
+
+  group('isValidJordanPhone', () {
+    test('accepts local and international formats', () {
+      expect(isValidJordanPhone('0791234567'), isTrue);
+      expect(isValidJordanPhone('078 123 4567'), isTrue);
+      expect(isValidJordanPhone('+962771234567'), isTrue);
+      expect(isValidJordanPhone('00962791234567'), isTrue);
+    });
+
+    test('rejects wrong prefixes and lengths', () {
+      expect(isValidJordanPhone('0761234567'), isFalse);
+      expect(isValidJordanPhone('079123456'), isFalse);
+      expect(isValidJordanPhone('07912345678'), isFalse);
+      expect(isValidJordanPhone('abc'), isFalse);
+    });
   });
 
   // ─── User.copyWith ──────────────────────────────────────────────────────────
@@ -155,6 +207,8 @@ void main() {
         id: 'user-123',
         email: 'noor@gmail.com',
         name: 'Noor',
+        firstName: 'Noor',
+        lastName: '',
         serialNumber: 'NXS-442F8-AA1CC',
         loyaltyPoints: 0,
         createdAt: DateTime(2026, 5, 16),

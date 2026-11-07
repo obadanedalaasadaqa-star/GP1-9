@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/theme_provider.dart';
+import '../core/validators.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -13,7 +14,9 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late TextEditingController _nameCtrl;
+  late TextEditingController _firstNameCtrl;
+  late TextEditingController _lastNameCtrl;
+  late TextEditingController _phoneCtrl;
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
   String? _status;
@@ -22,24 +25,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController(
-      text: context.read<AuthProvider>().user?.name ?? '');
+    final user = context.read<AuthProvider>().user;
+    _firstNameCtrl = TextEditingController(text: user?.firstName ?? '');
+    _lastNameCtrl  = TextEditingController(text: user?.lastName ?? '');
+    _phoneCtrl     = TextEditingController(text: _localPhone(user?.phone));
   }
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
+
+  // "+962791234567" → "0791234567" for display and editing
+  String _localPhone(String? phone) =>
+      phone == null ? '' : phone.replaceFirst('+962', '0');
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final auth = context.read<AuthProvider>();
-    if (_nameCtrl.text.trim() == auth.user?.name) return;
+    final user = auth.user;
+    final first = _firstNameCtrl.text.trim();
+    final last  = _lastNameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    if (first == user?.firstName && last == user?.lastName &&
+        phone == _localPhone(user?.phone)) {
+      return;
+    }
 
     setState(() { _loading = true; _status = null; });
     try {
-      final updated = await ApiClient.updateName(_nameCtrl.text.trim());
+      final updated = await ApiClient.updateProfile(
+        firstName: first, lastName: last, phone: phone);
       auth.updateUser(updated);
       setState(() { _status = 'success'; _msg = 'Profile updated.'; });
     } catch (e) {
@@ -160,6 +179,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _sectionTitle('ACCOUNT INFO', textMuted),
                   _row('Email', user.email,
                     textMuted: textMuted, textPrimary: textPrimary, border: border),
+                  _row('Phone', user.phone == null ? 'Not set' : _localPhone(user.phone),
+                    textMuted: textMuted, textPrimary: textPrimary, border: border),
                   _row('Serial Number', user.serialNumber,
                     textMuted: textMuted, textPrimary: textPrimary, border: border,
                     valueStyle: GoogleFonts.spaceGrotesk(
@@ -188,41 +209,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Display Name',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 13, fontWeight: FontWeight.w500,
-                            color: textDim)),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _nameCtrl,
-                          style: GoogleFonts.dmSans(
-                            color: textPrimary, fontSize: 15),
-                          validator: (v) => (v?.trim().isEmpty ?? true)
-                              ? 'Name required' : null,
-                          decoration: InputDecoration(
-                            hintText: 'Your name',
-                            hintStyle: GoogleFonts.dmSans(color: textMuted),
-                            filled: true,
-                            fillColor: isDark
-                                ? Colors.white.withValues(alpha: 0.04)
-                                : Colors.black.withValues(alpha: 0.03),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: border)),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: AppColors.gold.withValues(alpha: 0.6))),
-                            errorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: AppColors.alert.withValues(alpha: 0.5))),
-                            focusedErrorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: AppColors.alert.withValues(alpha: 0.7))),
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _fieldLabel('First Name', textDim),
+                                _input(_firstNameCtrl, 'First',
+                                  isDark: isDark, border: border,
+                                  textPrimary: textPrimary, textMuted: textMuted,
+                                  validator: (v) => (v?.trim().isEmpty ?? true)
+                                      ? 'Required' : null),
+                              ],
+                            )),
+                            const SizedBox(width: 12),
+                            Expanded(child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _fieldLabel('Last Name', textDim),
+                                _input(_lastNameCtrl, 'Last',
+                                  isDark: isDark, border: border,
+                                  textPrimary: textPrimary, textMuted: textMuted,
+                                  validator: (v) => (v?.trim().isEmpty ?? true)
+                                      ? 'Required' : null),
+                              ],
+                            )),
+                          ],
                         ),
+                        const SizedBox(height: 14),
+                        _fieldLabel('Phone Number', textDim),
+                        _input(_phoneCtrl, '07X XXX XXXX',
+                          keyboard: TextInputType.phone,
+                          isDark: isDark, border: border,
+                          textPrimary: textPrimary, textMuted: textMuted,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              // Older accounts may not have a phone yet
+                              return user.phone == null ? null : 'Phone number is required';
+                            }
+                            return isValidJordanPhone(v)
+                                ? null : 'Enter a valid mobile number (07X XXX XXXX)';
+                          }),
 
                         if (_status != null) ...[
                           const SizedBox(height: 12),
@@ -322,6 +350,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: border),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+
+  Widget _fieldLabel(String text, Color color) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(text, style: GoogleFonts.dmSans(
+      fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+  );
+
+  Widget _input(
+    TextEditingController ctrl,
+    String hint, {
+    required bool isDark,
+    required Color border,
+    required Color textPrimary,
+    required Color textMuted,
+    TextInputType keyboard = TextInputType.text,
+    String? Function(String?)? validator,
+  }) =>
+    TextFormField(
+      controller: ctrl,
+      keyboardType: keyboard,
+      validator: validator,
+      style: GoogleFonts.dmSans(color: textPrimary, fontSize: 15),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.dmSans(color: textMuted),
+        filled: true,
+        fillColor: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.03),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: border)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.gold.withValues(alpha: 0.6))),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.alert.withValues(alpha: 0.5))),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.alert.withValues(alpha: 0.7))),
+      ),
     );
 
   Widget _sectionTitle(String t, Color textMuted) => Padding(

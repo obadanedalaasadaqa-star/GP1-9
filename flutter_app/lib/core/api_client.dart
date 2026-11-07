@@ -66,7 +66,9 @@ class ApiClient {
 
   // ── Auth ───────────────────────────────────────────────────────
   static Future<({String token, User user})> register({
-    required String name,
+    required String firstName,
+    required String lastName,
+    required String phone,
     required String email,
     required String password,
   }) async {
@@ -75,7 +77,9 @@ class ApiClient {
           Uri.parse('${AppConfig.baseUrl}/auth/register'),
           headers: await _headers(),
           body: jsonEncode({
-            'name': name,
+            'firstName': firstName,
+            'lastName': lastName,
+            'phone': phone,
             'email': email,
             'password': password,
           }),
@@ -126,12 +130,20 @@ class ApiClient {
     return User.fromJson(_parse(res));
   }
 
-  static Future<User> updateName(String name) async {
+  static Future<User> updateProfile({
+    required String firstName,
+    required String lastName,
+    String? phone,
+  }) async {
     final res = await http
         .patch(
           Uri.parse('${AppConfig.baseUrl}/user/me'),
           headers: await _headers(auth: true),
-          body: jsonEncode({'name': name}),
+          body: jsonEncode({
+            'firstName': firstName,
+            'lastName': lastName,
+            if (phone != null && phone.isNotEmpty) 'phone': phone,
+          }),
         )
         .timeout(
           _kTimeout,

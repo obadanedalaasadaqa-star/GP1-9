@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/theme_provider.dart';
+import '../core/validators.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -15,7 +16,9 @@ class _AuthScreenState extends State<AuthScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
   final _formKey = GlobalKey<FormState>();
-  final _name     = TextEditingController();
+  final _firstName = TextEditingController();
+  final _lastName  = TextEditingController();
+  final _phone     = TextEditingController();
   final _email    = TextEditingController();
   final _password = TextEditingController();
 
@@ -33,7 +36,9 @@ class _AuthScreenState extends State<AuthScreen>
   @override
   void dispose() {
     _tabs.dispose();
-    _name.dispose();
+    _firstName.dispose();
+    _lastName.dispose();
+    _phone.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
@@ -47,7 +52,13 @@ class _AuthScreenState extends State<AuthScreen>
     final auth = context.read<AuthProvider>();
     try {
       if (_isRegister) {
-        await auth.register(_name.text.trim(), _email.text.trim(), _password.text);
+        await auth.register(
+          firstName: _firstName.text.trim(),
+          lastName: _lastName.text.trim(),
+          phone: _phone.text.trim(),
+          email: _email.text.trim(),
+          password: _password.text,
+        );
       } else {
         await auth.login(_email.text.trim(), _password.text);
       }
@@ -153,12 +164,45 @@ class _AuthScreenState extends State<AuthScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (_isRegister) ...[
-                                  _label('Full Name', textDim),
-                                  _field(_name, 'Your full name',
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _label('First Name', textDim),
+                                          _field(_firstName, 'First',
+                                            isDark: isDark, border: border,
+                                            textPrimary: textPrimary, textMuted: textMuted,
+                                            validator: (v) => (v?.trim().isEmpty ?? true)
+                                                ? 'Required' : null),
+                                        ],
+                                      )),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _label('Last Name', textDim),
+                                          _field(_lastName, 'Last',
+                                            isDark: isDark, border: border,
+                                            textPrimary: textPrimary, textMuted: textMuted,
+                                            validator: (v) => (v?.trim().isEmpty ?? true)
+                                                ? 'Required' : null),
+                                        ],
+                                      )),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _label('Phone Number', textDim),
+                                  _field(_phone, '07X XXX XXXX',
+                                    keyboard: TextInputType.phone,
                                     isDark: isDark, border: border,
                                     textPrimary: textPrimary, textMuted: textMuted,
-                                    validator: (v) => (v?.trim().isEmpty ?? true)
-                                        ? 'Name is required' : null),
+                                    validator: (v) {
+                                      if (v == null || v.trim().isEmpty) return 'Phone number is required';
+                                      if (!isValidJordanPhone(v)) return 'Enter a valid mobile number (07X XXX XXXX)';
+                                      return null;
+                                    }),
                                   const SizedBox(height: 16),
                                 ],
                                 _label('Email', textDim),
