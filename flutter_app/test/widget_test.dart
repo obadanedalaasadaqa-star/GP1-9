@@ -189,7 +189,7 @@ void main() {
       expect(isValidJordanPhone('00962791234567'), isTrue);
     });
 
-    test('rejects wrong prefixes and lengths', () {
+    test('rejects wrong prefixes and lengths (phone)', () {
       expect(isValidJordanPhone('0761234567'), isFalse);
       expect(isValidJordanPhone('079123456'), isFalse);
       expect(isValidJordanPhone('07912345678'), isFalse);
@@ -239,6 +239,32 @@ void main() {
       expect(copy.name, baseUser.name);
       expect(copy.serialNumber, baseUser.serialNumber);
       expect(copy.loyaltyPoints, baseUser.loyaltyPoints);
+    });
+  });
+
+  // ─── Password rules & strength ──────────────────────────────────────────────
+
+  group('Password rules', () {
+    test('valid only when every rule is met', () {
+      expect(isValidPassword('Nexus@2026'), isTrue);
+      expect(isValidPassword('testtest'), isFalse);     // no upper, number, special
+      expect(isValidPassword('Testtest1'), isFalse);    // no special
+      expect(isValidPassword('N@1a'), isFalse);         // too short
+      expect(isValidPassword('NEXUS@2026'), isFalse);   // no lowercase
+    });
+
+    test('strength levels', () {
+      expect(passwordStrength(''), PasswordStrength.weak);
+      expect(passwordStrength('testtest'), PasswordStrength.weak);
+      expect(passwordStrength('Testtest1'), PasswordStrength.fair);
+      expect(passwordStrength('Nexus@2026'), PasswordStrength.good);
+      expect(passwordStrength('Nexus@2026-Secure'), PasswordStrength.strong);
+    });
+
+    test('validateNewPassword messages', () {
+      expect(validateNewPassword(''), 'Password is required');
+      expect(validateNewPassword('weak'), isNotNull);
+      expect(validateNewPassword('Nexus@2026'), isNull);
     });
   });
 }

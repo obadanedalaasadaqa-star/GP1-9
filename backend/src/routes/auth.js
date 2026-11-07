@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const prisma = require('../lib/prisma');
 const { normalizeJordanPhone } = require('../lib/phone');
+const { passwordError } = require('../lib/password');
 
 const router = express.Router();
 
@@ -43,9 +44,8 @@ router.post('/register', async (req, res) => {
   if (!phone) {
     return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-  }
+  const pwError = passwordError(password);
+  if (pwError) return res.status(400).json({ error: pwError });
 
   try {
     const existing = await prisma.user.findUnique({ where: { email } });

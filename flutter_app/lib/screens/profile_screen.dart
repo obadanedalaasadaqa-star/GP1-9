@@ -6,6 +6,7 @@ import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/theme_provider.dart';
 import '../core/validators.dart';
+import '../widgets/password_meter.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -365,18 +366,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ? 'Enter your current password' : null),
                         const SizedBox(height: 14),
                         _fieldLabel('New Password', textDim),
-                        _input(_newPwCtrl, 'At least 6 characters',
+                        _input(_newPwCtrl, 'Choose a strong password',
                           obscure: _pwObscure,
                           isDark: isDark, border: border,
                           textPrimary: textPrimary, textMuted: textMuted,
                           validator: (v) {
-                            if (v == null || v.isEmpty) return 'Enter a new password';
-                            if (v.length < 6) return 'Minimum 6 characters';
-                            if (v == _currentPwCtrl.text) {
+                            if (v != null && v.isNotEmpty && v == _currentPwCtrl.text) {
                               return 'Must be different from the current password';
                             }
-                            return null;
+                            return validateNewPassword(v);
                           }),
+                        PasswordMeter(
+                          controller: _newPwCtrl,
+                          textMuted: textMuted,
+                          track: border),
                         const SizedBox(height: 14),
                         _fieldLabel('Confirm New Password', textDim),
                         _input(_confirmPwCtrl, 'Repeat the new password',

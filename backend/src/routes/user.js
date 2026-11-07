@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
 const { normalizeJordanPhone } = require('../lib/phone');
+const { passwordError } = require('../lib/password');
 
 const router = express.Router();
 
@@ -96,9 +97,8 @@ router.patch('/password', async (req, res) => {
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current and new password are required.' });
   }
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: 'New password must be at least 6 characters.' });
-  }
+  const pwError = passwordError(newPassword);
+  if (pwError) return res.status(400).json({ error: pwError });
   if (newPassword === currentPassword) {
     return res.status(400).json({ error: 'New password must be different from the current one.' });
   }

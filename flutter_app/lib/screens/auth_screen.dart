@@ -5,6 +5,7 @@ import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/theme_provider.dart';
 import '../core/validators.dart';
+import '../widgets/password_meter.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -227,11 +228,15 @@ class _AuthScreenState extends State<AuthScreen>
                                       color: textMuted, size: 18),
                                     onPressed: () => setState(() => _obscure = !_obscure),
                                   ),
-                                  validator: (v) {
-                                    if (v == null || v.isEmpty) return 'Password is required';
-                                    if (v.length < 6) return 'Minimum 6 characters';
-                                    return null;
-                                  }),
+                                  // Sign-in accepts older passwords; new ones must meet the rules
+                                  validator: (v) => _isRegister
+                                      ? validateNewPassword(v)
+                                      : (v == null || v.isEmpty) ? 'Password is required' : null),
+                                if (_isRegister)
+                                  PasswordMeter(
+                                    controller: _password,
+                                    textMuted: textMuted,
+                                    track: border),
 
                                 if (_error != null) ...[
                                   const SizedBox(height: 16),
