@@ -10,6 +10,24 @@ function hashCode(userId, code) {
   return crypto.createHash('sha256').update(`${userId}:${code}`).digest('hex');
 }
 
+// Seconds left before a new code may be sent for [row] (0 = can send now).
+function waitSecondsFor(row) {
+  if (!row) return 0;
+  const elapsed = Date.now() - row.lastSentAt.getTime();
+  return elapsed < RESEND_WAIT_MS ? Math.ceil((RESEND_WAIT_MS - elapsed) / 1000) : 0;
+}
+
+/**
+ * Read-only: seconds the user must wait before a new code of [type] can be
+ * sent (0 = can send now). Same check issueCode() does, without writing.
+ */
+async function resendWaitSeconds(userId, type) {
+  const row = await prisma.verificationCode.findUnique({
+    where: { userId_type: { userId, type } },
+  });
+  return waitSecondsFor(row);
+}
+
 /**
  * Create (or replace) the user's code of [type].
  * Returns { code } or { waitSeconds } if a code was sent less than a minute ago.
@@ -18,11 +36,9 @@ async function issueCode(userId, type, { ignoreWait = false } = {}) {
   const existing = await prisma.verificationCode.findUnique({
     where: { userId_type: { userId, type } },
   });
-  if (existing && !ignoreWait) {
-    const elapsed = Date.now() - existing.lastSentAt.getTime();
-    if (elapsed < RESEND_WAIT_MS) {
-      return { waitSeconds: Math.ceil((RESEND_WAIT_MS - elapsed) / 1000) };
-    }
+  if (!ignoreWait) {
+    const waitSeconds = waitSecondsFor(existing);
+    if (waitSeconds > 0) return { waitSeconds };
   }
 
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
@@ -84,4 +100,4 @@ async function sendEmailCode(user, opts) {
   }
 }
 
-module.exports = { issueCode, checkCode, sendEmailCode };
+module.exports = { issueCode, resendWaitSeconds, checkCode, sendEmailCode };

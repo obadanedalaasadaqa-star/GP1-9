@@ -7,8 +7,6 @@ const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
 const { sendEmailCode } = require('../lib/verification');
 
-const router = express.Router();
-
 const SAFE_USER_SELECT = {
   id: true,
   email: true,
@@ -31,72 +29,77 @@ function signToken(userId) {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
 }
 
-// POST /api/auth/register
-router.post('/register', async (req, res) => {
-  const { email, password } = req.body ?? {};
-  const firstName = req.body?.firstName?.trim();
-  const lastName  = req.body?.lastName?.trim();
+// Router factory: every createApp() gets its own router and limiters.
+module.exports = function authRoutes(limiters) {
+  const router = express.Router();
 
-  if (!email || !password || !firstName || !lastName || !req.body?.phone) {
-    return res.status(400).json({
-      error: 'First name, last name, phone, email, and password are required.',
-    });
-  }
-  const phone = normalizeJordanPhone(req.body.phone);
-  if (!phone) {
-    return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
-  }
-  const pwError = passwordError(password);
-  if (pwError) return res.status(400).json({ error: pwError });
+  // POST /api/auth/register
+  router.post('/register', limiters.register, async (req, res) => {
+    const { email, password } = req.body ?? {};
+    const firstName = req.body?.firstName?.trim();
+    const lastName  = req.body?.lastName?.trim();
 
-  try {
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) return res.status(409).json({ error: 'Email already registered.' });
-    const phoneTaken = await prisma.user.findUnique({ where: { phone } });
-    if (phoneTaken) return res.status(409).json({ error: 'Phone number already registered.' });
+    if (!email || !password || !firstName || !lastName || !req.body?.phone) {
+      return res.status(400).json({
+        error: 'First name, last name, phone, email, and password are required.',
+      });
+    }
+    const phone = normalizeJordanPhone(req.body.phone);
+    if (!phone) {
+      return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
+    }
+    const pwError = passwordError(password);
+    if (pwError) return res.status(400).json({ error: pwError });
 
-    const hashed = await bcrypt.hash(password, 12);
-    const serialNumber = generateSerial();
+    try {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) return res.status(409).json({ error: 'Email already registered.' });
+      const phoneTaken = await prisma.user.findUnique({ where: { phone } });
+      if (phoneTaken) return res.status(409).json({ error: 'Phone number already registered.' });
 
-    const user = await prisma.user.create({
-      data: {
-        email, password: hashed, serialNumber,
-        firstName, lastName, phone,
-        name: `${firstName} ${lastName}`,
-      },
-      select: SAFE_USER_SELECT,
-    });
+      const hashed = await bcrypt.hash(password, 12);
+      const serialNumber = generateSerial();
 
-    await sendEmailCode(user);
-    res.status(201).json({ token: signToken(user.id), user });
-  } catch (err) {
-    console.error('[register]', err);
-    res.status(500).json({ error: 'Registration failed. Please try again.' });
-  }
-});
+      const user = await prisma.user.create({
+        data: {
+          email, password: hashed, serialNumber,
+          firstName, lastName, phone,
+          name: `${firstName} ${lastName}`,
+        },
+        select: SAFE_USER_SELECT,
+      });
 
-// POST /api/auth/login
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body ?? {};
+      await sendEmailCode(user);
+      res.status(201).json({ token: signToken(user.id), user });
+    } catch (err) {
+      console.error('[register]', err);
+      res.status(500).json({ error: 'Registration failed. Please try again.' });
+    }
+  });
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
-  }
+  // POST /api/auth/login
+  router.post('/login', limiters.login, async (req, res) => {
+    const { email, password } = req.body ?? {};
 
-  // Dummy hash — ensures bcrypt always runs to prevent email enumeration via timing
-  const DUMMY = '$2a$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
 
-  try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    const valid = await bcrypt.compare(password, user?.password ?? DUMMY);
-    if (!user || !valid) return res.status(401).json({ error: 'Invalid email or password.' });
+    // Dummy hash — ensures bcrypt always runs to prevent email enumeration via timing
+    const DUMMY = '$2a$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
-    const { password: _, ...safeUser } = user;
-    res.json({ token: signToken(user.id), user: safeUser });
-  } catch (err) {
-    console.error('[login]', err);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
-  }
-});
+    try {
+      const user = await prisma.user.findUnique({ where: { email } });
+      const valid = await bcrypt.compare(password, user?.password ?? DUMMY);
+      if (!user || !valid) return res.status(401).json({ error: 'Invalid email or password.' });
 
-module.exports = router;
+      const { password: _, ...safeUser } = user;
+      res.json({ token: signToken(user.id), user: safeUser });
+    } catch (err) {
+      console.error('[login]', err);
+      res.status(500).json({ error: 'Login failed. Please try again.' });
+    }
+  });
+
+  return router;
+};
