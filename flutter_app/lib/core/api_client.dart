@@ -178,10 +178,17 @@ class ApiClient {
   }
 
   // ── Receipts ───────────────────────────────────────────────────
-  static Future<List<Receipt>> getReceipts() async {
+  /// Latest 50 receipts, or all receipts in [from, to) when a range is given.
+  static Future<List<Receipt>> getReceipts({DateTime? from, DateTime? to}) async {
+    final uri = Uri.parse('${AppConfig.baseUrl}/user/receipts').replace(
+      queryParameters: {
+        if (from != null) 'from': from.toUtc().toIso8601String(),
+        if (to != null) 'to': to.toUtc().toIso8601String(),
+      },
+    );
     final res = await http
         .get(
-          Uri.parse('${AppConfig.baseUrl}/user/receipts'),
+          uri,
           headers: await _headers(auth: true),
         )
         .timeout(

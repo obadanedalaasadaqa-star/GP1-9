@@ -121,13 +121,31 @@ router.patch('/password', async (req, res) => {
   }
 });
 
-// GET /api/user/receipts — placeholder for Phase 2
+// GET /api/user/receipts
+// Optional ?from=&to= (ISO dates, from inclusive, to exclusive) filters by date.
+// Without a range, returns the latest 50 receipts.
 router.get('/receipts', async (req, res) => {
+  const { from, to } = req.query;
+  const fromDate = from ? new Date(from) : null;
+  const toDate   = to   ? new Date(to)   : null;
+  if ((fromDate && isNaN(fromDate)) || (toDate && isNaN(toDate))) {
+    return res.status(400).json({ error: 'from and to must be valid dates.' });
+  }
+  const hasRange = fromDate || toDate;
+
   try {
     const receipts = await prisma.receipt.findMany({
-      where: { userId: req.userId },
+      where: {
+        userId: req.userId,
+        ...(hasRange && {
+          createdAt: {
+            ...(fromDate && { gte: fromDate }),
+            ...(toDate && { lt: toDate }),
+          },
+        }),
+      },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: hasRange ? 1000 : 50,
     });
     res.json(receipts);
   } catch (err) {
