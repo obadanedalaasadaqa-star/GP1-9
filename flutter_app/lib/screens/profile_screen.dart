@@ -17,10 +17,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _firstNameCtrl;
   late TextEditingController _lastNameCtrl;
   late TextEditingController _phoneCtrl;
+  late TextEditingController _emailCtrl;
+  final _passwordCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
+  bool _obscure = true;
   String? _status;
   String _msg = '';
+
+  // Change password card
+  final _pwFormKey     = GlobalKey<FormState>();
+  final _currentPwCtrl = TextEditingController();
+  final _newPwCtrl     = TextEditingController();
+  final _confirmPwCtrl = TextEditingController();
+  bool _pwLoading = false;
+  bool _pwObscure = true;
+  String? _pwStatus;
+  String _pwMsg = '';
 
   @override
   void initState() {
@@ -29,6 +42,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _firstNameCtrl = TextEditingController(text: user?.firstName ?? '');
     _lastNameCtrl  = TextEditingController(text: user?.lastName ?? '');
     _phoneCtrl     = TextEditingController(text: _localPhone(user?.phone));
+    _emailCtrl     = TextEditingController(text: user?.email ?? '');
+    // Show/hide the password field as the email is edited
+    _emailCtrl.addListener(() => setState(() {}));
   }
 
   @override
@@ -36,8 +52,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _currentPwCtrl.dispose();
+    _newPwCtrl.dispose();
+    _confirmPwCtrl.dispose();
     super.dispose();
   }
+
+  Future<void> _changePassword() async {
+    if (!(_pwFormKey.currentState?.validate() ?? false)) return;
+    setState(() { _pwLoading = true; _pwStatus = null; });
+    try {
+      await ApiClient.changePassword(
+        currentPassword: _currentPwCtrl.text,
+        newPassword: _newPwCtrl.text);
+      _currentPwCtrl.clear();
+      _newPwCtrl.clear();
+      _confirmPwCtrl.clear();
+      setState(() { _pwStatus = 'success'; _pwMsg = 'Password updated.'; });
+    } catch (e) {
+      setState(() { _pwStatus = 'error'; _pwMsg = e.toString(); });
+    } finally {
+      if (mounted) setState(() => _pwLoading = false);
+    }
+  }
+
+  bool get _emailChanged =>
+      _emailCtrl.text.trim() != context.read<AuthProvider>().user?.email;
 
   // "+962791234567" → "0791234567" for display and editing
   String _localPhone(String? phone) =>
@@ -50,16 +92,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final first = _firstNameCtrl.text.trim();
     final last  = _lastNameCtrl.text.trim();
     final phone = _phoneCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
     if (first == user?.firstName && last == user?.lastName &&
-        phone == _localPhone(user?.phone)) {
+        phone == _localPhone(user?.phone) && !_emailChanged) {
       return;
     }
 
     setState(() { _loading = true; _status = null; });
     try {
       final updated = await ApiClient.updateProfile(
-        firstName: first, lastName: last, phone: phone);
+        firstName: first, lastName: last, phone: phone,
+        email: email,
+        currentPassword: _emailChanged ? _passwordCtrl.text : null);
       auth.updateUser(updated);
+      _passwordCtrl.clear();
       setState(() { _status = 'success'; _msg = 'Profile updated.'; });
     } catch (e) {
       setState(() { _status = 'error'; _msg = e.toString(); });
@@ -251,60 +297,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             return isValidJordanPhone(v)
                                 ? null : 'Enter a valid mobile number (07X XXX XXXX)';
                           }),
+                        const SizedBox(height: 14),
+                        _fieldLabel('Email', textDim),
+                        _input(_emailCtrl, 'you@example.com',
+                          keyboard: TextInputType.emailAddress,
+                          isDark: isDark, border: border,
+                          textPrimary: textPrimary, textMuted: textMuted,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return 'Email is required';
+                            if (!v.contains('@')) return 'Enter a valid email';
+                            return null;
+                          }),
+                        if (_emailChanged) ...[
+                          const SizedBox(height: 14),
+                          _fieldLabel('Current Password', textDim),
+                          _input(_passwordCtrl, 'Required to change your email',
+                            obscure: _obscure,
+                            isDark: isDark, border: border,
+                            textPrimary: textPrimary, textMuted: textMuted,
+                            suffix: IconButton(
+                              icon: Icon(
+                                _obscure ? Icons.visibility_off : Icons.visibility,
+                                color: textMuted, size: 18),
+                              onPressed: () => setState(() => _obscure = !_obscure),
+                            ),
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Enter your current password' : null),
+                        ],
 
                         if (_status != null) ...[
                           const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: (_status == 'success'
-                                  ? AppColors.mint : AppColors.alert)
-                                .withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: (_status == 'success'
-                                    ? AppColors.mint : AppColors.alert)
-                                  .withValues(alpha: 0.35)),
-                            ),
-                            child: Text(_msg, style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              color: _status == 'success'
-                                  ? AppColors.mint : AppColors.alert)),
-                          ),
+                          _statusBanner(_status!, _msg),
                         ],
 
                         const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity, height: 48,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: AppColors.goldGlow,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.gold.withValues(alpha: 0.25),
-                                  blurRadius: 14, offset: const Offset(0, 5)),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _loading ? null : _save,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12))),
-                              child: _loading
-                                  ? const SizedBox(width: 18, height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white))
-                                  : Text('Save Changes',
-                                      style: GoogleFonts.spaceGrotesk(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14, color: Colors.white)),
-                            ),
+                        _gradientButton('Save Changes',
+                          loading: _loading, onPressed: _save),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Change password card
+              _card(
+                surface: surface, border: border,
+                children: [
+                  _sectionTitle('CHANGE PASSWORD', textMuted),
+                  Form(
+                    key: _pwFormKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _fieldLabel('Current Password', textDim),
+                        _input(_currentPwCtrl, '••••••••',
+                          obscure: _pwObscure,
+                          isDark: isDark, border: border,
+                          textPrimary: textPrimary, textMuted: textMuted,
+                          suffix: IconButton(
+                            icon: Icon(
+                              _pwObscure ? Icons.visibility_off : Icons.visibility,
+                              color: textMuted, size: 18),
+                            onPressed: () => setState(() => _pwObscure = !_pwObscure),
                           ),
-                        ),
+                          validator: (v) => (v == null || v.isEmpty)
+                              ? 'Enter your current password' : null),
+                        const SizedBox(height: 14),
+                        _fieldLabel('New Password', textDim),
+                        _input(_newPwCtrl, 'At least 6 characters',
+                          obscure: _pwObscure,
+                          isDark: isDark, border: border,
+                          textPrimary: textPrimary, textMuted: textMuted,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'Enter a new password';
+                            if (v.length < 6) return 'Minimum 6 characters';
+                            if (v == _currentPwCtrl.text) {
+                              return 'Must be different from the current password';
+                            }
+                            return null;
+                          }),
+                        const SizedBox(height: 14),
+                        _fieldLabel('Confirm New Password', textDim),
+                        _input(_confirmPwCtrl, 'Repeat the new password',
+                          obscure: _pwObscure,
+                          isDark: isDark, border: border,
+                          textPrimary: textPrimary, textMuted: textMuted,
+                          validator: (v) => v != _newPwCtrl.text
+                              ? 'Passwords do not match' : null),
+
+                        if (_pwStatus != null) ...[
+                          const SizedBox(height: 12),
+                          _statusBanner(_pwStatus!, _pwMsg),
+                        ],
+
+                        const SizedBox(height: 16),
+                        _gradientButton('Update Password',
+                          loading: _pwLoading, onPressed: _changePassword),
                       ],
                     ),
                   ),
@@ -352,6 +441,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
     );
 
+  Widget _statusBanner(String status, String msg) {
+    final color = status == 'success' ? AppColors.mint : AppColors.alert;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(msg, style: GoogleFonts.dmSans(fontSize: 13, color: color)),
+    );
+  }
+
+  Widget _gradientButton(
+    String label, {
+    required bool loading,
+    required VoidCallback onPressed,
+  }) =>
+    SizedBox(
+      width: double.infinity, height: 48,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: AppColors.goldGlow,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.gold.withValues(alpha: 0.25),
+              blurRadius: 14, offset: const Offset(0, 5)),
+          ],
+        ),
+        child: ElevatedButton(
+          onPressed: loading ? null : onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12))),
+          child: loading
+              ? const SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white))
+              : Text(label,
+                  style: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14, color: Colors.white)),
+        ),
+      ),
+    );
+
   Widget _fieldLabel(String text, Color color) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(text, style: GoogleFonts.dmSans(
@@ -366,16 +504,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required Color textPrimary,
     required Color textMuted,
     TextInputType keyboard = TextInputType.text,
+    bool obscure = false,
+    Widget? suffix,
     String? Function(String?)? validator,
   }) =>
     TextFormField(
       controller: ctrl,
+      obscureText: obscure,
       keyboardType: keyboard,
       validator: validator,
       style: GoogleFonts.dmSans(color: textPrimary, fontSize: 15),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: GoogleFonts.dmSans(color: textMuted),
+        suffixIcon: suffix,
         filled: true,
         fillColor: isDark
             ? Colors.white.withValues(alpha: 0.04)

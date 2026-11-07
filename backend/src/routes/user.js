@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
 const { normalizeJordanPhone } = require('../lib/phone');
@@ -34,7 +35,8 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// PATCH /api/user/me  — update first name, last name, and phone
+// PATCH /api/user/me  — update first name, last name, phone, and email
+// Changing the email requires the current password.
 router.patch('/me', async (req, res) => {
   const firstName = req.body?.firstName?.trim();
   const lastName  = req.body?.lastName?.trim();
@@ -52,6 +54,26 @@ router.patch('/me', async (req, res) => {
   }
 
   try {
+    const email = req.body?.email?.trim();
+    if (email) {
+      const current = await prisma.user.findUnique({ where: { id: req.userId } });
+      if (!current) return res.status(404).json({ error: 'User not found.' });
+
+      if (email !== current.email) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          return res.status(400).json({ error: 'Enter a valid email.' });
+        }
+        const { currentPassword } = req.body;
+        if (!currentPassword) {
+          return res.status(400).json({ error: 'Current password is required to change your email.' });
+        }
+        if (!(await bcrypt.compare(currentPassword, current.password))) {
+          return res.status(401).json({ error: 'Current password is incorrect.' });
+        }
+        data.email = email;
+      }
+    }
+
     const user = await prisma.user.update({
       where: { id: req.userId },
       data,
@@ -60,10 +82,42 @@ router.patch('/me', async (req, res) => {
     res.json(user);
   } catch (err) {
     if (err.code === 'P2002') {
-      return res.status(409).json({ error: 'Phone number already registered.' });
+      const field = err.meta?.target?.includes('email') ? 'Email' : 'Phone number';
+      return res.status(409).json({ error: `${field} already registered.` });
     }
     console.error('[user/patch]', err);
     res.status(500).json({ error: 'Failed to update profile.' });
+  }
+});
+
+// PATCH /api/user/password — change password (requires the current one)
+router.patch('/password', async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new password are required.' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+  }
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ error: 'New password must be different from the current one.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { password: await bcrypt.hash(newPassword, 12) },
+    });
+    res.json({ message: 'Password updated.' });
+  } catch (err) {
+    console.error('[user/password]', err);
+    res.status(500).json({ error: 'Failed to update password.' });
   }
 });
 

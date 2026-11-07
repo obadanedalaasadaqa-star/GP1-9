@@ -134,6 +134,8 @@ class ApiClient {
     required String firstName,
     required String lastName,
     String? phone,
+    String? email,
+    String? currentPassword,
   }) async {
     final res = await http
         .patch(
@@ -143,6 +145,9 @@ class ApiClient {
             'firstName': firstName,
             'lastName': lastName,
             if (phone != null && phone.isNotEmpty) 'phone': phone,
+            if (email != null && email.isNotEmpty) 'email': email,
+            if (currentPassword != null && currentPassword.isNotEmpty)
+              'currentPassword': currentPassword,
           }),
         )
         .timeout(
@@ -150,6 +155,26 @@ class ApiClient {
           onTimeout: () => throw ApiException('Request timed out.'),
         );
     return User.fromJson(_parse(res));
+  }
+
+  static Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final res = await http
+        .patch(
+          Uri.parse('${AppConfig.baseUrl}/user/password'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({
+            'currentPassword': currentPassword,
+            'newPassword': newPassword,
+          }),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
+    _parse(res);
   }
 
   // ── Receipts ───────────────────────────────────────────────────
