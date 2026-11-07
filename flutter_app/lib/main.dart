@@ -305,14 +305,39 @@ class _Root extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth  = context.watch<AuthProvider>();
-    final isDark = context.watch<ThemeProvider>().isDark;
-    final bg    = isDark ? AppColors.bg : AppColors.bgLight;
+    final auth = context.watch<AuthProvider>();
 
     if (auth.loading) {
-      return Scaffold(
-        backgroundColor: bg,
-        body: Center(
+      return _Splash(message: auth.wakingServer ? 'Waking up the server...' : null);
+    }
+    if (auth.startupError != null) {
+      return _Splash(error: auth.startupError, onRetry: auth.retry);
+    }
+
+    if (!auth.isLoggedIn) return const AuthScreen();
+    return const _MainShell();
+  }
+}
+
+// ── Startup splash: loading, or "server unreachable" with Retry ─────────────
+
+class _Splash extends StatelessWidget {
+  final String? message;
+  final String? error;
+  final VoidCallback? onRetry;
+  const _Splash({this.message, this.error, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark    = context.watch<ThemeProvider>().isDark;
+    final bg        = isDark ? AppColors.bg : AppColors.bgLight;
+    final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
+
+    return Scaffold(
+      backgroundColor: bg,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -324,17 +349,53 @@ class _Root extends StatelessWidget {
                     color: Colors.white, letterSpacing: -1)),
               ),
               const SizedBox(height: 28),
-              const SizedBox(width: 22, height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2, color: AppColors.gold)),
+              if (error == null) ...[
+                const SizedBox(width: 22, height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.gold)),
+                if (message != null) ...[
+                  const SizedBox(height: 16),
+                  Text(message!,
+                    style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+                ],
+              ] else ...[
+                Text(error!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(fontSize: 14, color: textMuted, height: 1.5)),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity, height: 50,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: AppColors.goldGlow,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: onRetry,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14))),
+                      child: Text('Retry',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15, color: Colors.white)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => context.read<AuthProvider>().logout(),
+                  child: Text('Sign in with a different account',
+                    style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+                ),
+              ],
             ],
           ),
         ),
-      );
-    }
-
-    if (!auth.isLoggedIn) return const AuthScreen();
-    return const _MainShell();
+      ),
+    );
   }
 }
 

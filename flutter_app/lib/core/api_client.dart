@@ -10,7 +10,11 @@ const _kTimeout = Duration(seconds: 15);
 class ApiException implements Exception {
   final String message;
   final int? statusCode;
-  ApiException(this.message, {this.statusCode});
+
+  /// True when our server answered with a JSON `{ "error": ... }` body.
+  /// False for timeouts and non-JSON replies (e.g. an HTML 404 from the host).
+  final bool fromServer;
+  ApiException(this.message, {this.statusCode, this.fromServer = false});
   @override
   String toString() => message;
 }
@@ -56,9 +60,11 @@ class ApiClient {
       );
     }
     if (res.statusCode >= 400) {
+      final error = body['error'];
       throw ApiException(
-        body['error'] as String? ?? 'Request failed',
+        error is String ? error : 'Request failed',
         statusCode: res.statusCode,
+        fromServer: error is String,
       );
     }
     return body;
@@ -86,7 +92,7 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     final data = _parse(res);
     return (
@@ -107,7 +113,7 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     final data = _parse(res);
     return (
@@ -117,15 +123,16 @@ class ApiClient {
   }
 
   // ── User ───────────────────────────────────────────────────────
-  static Future<User> getMe() async {
+  /// [timeout] is longer for the startup call, while a sleeping server wakes up.
+  static Future<User> getMe({Duration timeout = _kTimeout}) async {
     final res = await http
         .get(
           Uri.parse('${AppConfig.baseUrl}/user/me'),
           headers: await _headers(auth: true),
         )
         .timeout(
-          _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          timeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     return User.fromJson(_parse(res));
   }
@@ -152,7 +159,7 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     return User.fromJson(_parse(res));
   }
@@ -167,7 +174,7 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     _parse(res);
   }
@@ -181,7 +188,7 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     return User.fromJson(_parse(res));
   }
@@ -201,7 +208,7 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     _parse(res);
   }
@@ -222,8 +229,9 @@ class ApiClient {
         )
         .timeout(
           _kTimeout,
-          onTimeout: () => throw ApiException('Request timed out.'),
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
+    if (res.statusCode >= 400) _parse(res); // throws ApiException with the server's error
     final list = jsonDecode(res.body) as List<dynamic>;
     return list
         .map((e) => Receipt.fromJson(e as Map<String, dynamic>))

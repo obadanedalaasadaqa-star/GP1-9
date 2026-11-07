@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
 class AppConfig {
-  static const String baseUrl = 'http://192.168.1.20:3001/api';
+  // Online server (Render, HTTPS) by default. For local work run:
+  //   flutter run --dart-define=API_BASE_URL=http://<your-LAN-IP>:3001/api
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://nexus-backend-e0di.onrender.com/api',
+  );
 }
 
 class AppColors {
