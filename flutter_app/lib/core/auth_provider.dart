@@ -5,10 +5,18 @@ import 'user_model.dart';
 class AuthProvider extends ChangeNotifier {
   User? _user;
   bool _loading = true;
+  bool _justRegistered = false;
 
   User? get user => _user;
   bool get loading => _loading;
   bool get isLoggedIn => _user != null;
+
+  /// True once right after registering, so the app can open email verification.
+  bool consumeJustRegistered() {
+    final v = _justRegistered;
+    _justRegistered = false;
+    return v;
+  }
 
   AuthProvider() {
     _init();
@@ -55,6 +63,7 @@ class AuthProvider extends ChangeNotifier {
     );
     await ApiClient.saveToken(result.token);
     _user = result.user;
+    _justRegistered = true;
     notifyListeners();
   }
 

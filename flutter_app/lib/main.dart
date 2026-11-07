@@ -10,6 +10,7 @@ import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/archive_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/verify_email_screen.dart';
 import 'widgets/bottom_nav.dart';
 
 void main() {
@@ -347,6 +348,19 @@ class _MainShell extends StatefulWidget {
 
 class _MainShellState extends State<_MainShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Right after registering, go straight to email verification
+    // (the backend has already sent the code).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      if (auth.consumeJustRegistered() && !(auth.user?.emailVerified ?? true)) {
+        VerifyEmailScreen.open(context, sendOnOpen: false);
+      }
+    });
+  }
 
   static const _screens = [
     DashboardScreen(),

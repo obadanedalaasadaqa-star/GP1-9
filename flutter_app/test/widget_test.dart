@@ -177,6 +177,19 @@ void main() {
       expect(user.lastName, 'Al Assaf');
       expect(user.phone, isNull);
     });
+
+    test('emailVerified parsed, defaults to false when missing', () {
+      final base = {
+        'id': 'user-123',
+        'email': 'noor@gmail.com',
+        'name': 'Noor Assaf',
+        'serialNumber': 'NXS-442F8-AA1CC',
+        'loyaltyPoints': 0,
+        'createdAt': '2026-05-16T18:52:45.546Z',
+      };
+      expect(User.fromJson({...base, 'emailVerified': true}).emailVerified, isTrue);
+      expect(User.fromJson(base).emailVerified, isFalse);
+    });
   });
 
   // ─── isValidJordanPhone ─────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ const authRoutes     = require('./routes/auth');
 const userRoutes     = require('./routes/user');
 const receiptRoutes  = require('./routes/receipts');
 const prisma         = require('./lib/prisma');
+const { isMailConfigured } = require('./lib/mailer');
 
 const app = express();
 
@@ -62,6 +63,28 @@ async function start() {
      WHERE "firstName" IS NULL;
   `);
   console.log('   DB: nexus_users name/phone columns ready');
+
+  // Email verification (safe to run every boot)
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "emailVerified" BOOLEAN NOT NULL DEFAULT false;
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_verification_codes (
+      id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      "userId"     TEXT        NOT NULL REFERENCES nexus_users(id) ON DELETE CASCADE,
+      type         TEXT        NOT NULL,
+      "codeHash"   TEXT        NOT NULL,
+      "expiresAt"  TIMESTAMPTZ NOT NULL,
+      attempts     INTEGER     NOT NULL DEFAULT 0,
+      "lastSentAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE ("userId", type)
+    );
+  `);
+  console.log('   DB: email verification ready');
+  console.log(`   Mail: ${isMailConfigured()
+    ? `sending from ${process.env.GMAIL_USER}`
+    : 'not configured — verification codes are printed here (dev mode)'}`);
 
   app.listen(PORT, () => {
     console.log(`\n🔷 Nexus Backend running on http://localhost:${PORT}`);

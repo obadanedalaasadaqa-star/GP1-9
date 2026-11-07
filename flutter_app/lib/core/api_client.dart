@@ -157,6 +157,35 @@ class ApiClient {
     return User.fromJson(_parse(res));
   }
 
+  /// Ask the backend to email a new verification code.
+  /// Throws ApiException (statusCode 429) if one was sent under a minute ago.
+  static Future<void> sendEmailCode() async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/user/email/send-code'),
+          headers: await _headers(auth: true),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
+    _parse(res);
+  }
+
+  static Future<User> verifyEmail(String code) async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/user/email/verify'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({'code': code}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Request timed out.'),
+        );
+    return User.fromJson(_parse(res));
+  }
+
   static Future<void> changePassword({
     required String currentPassword,
     required String newPassword,

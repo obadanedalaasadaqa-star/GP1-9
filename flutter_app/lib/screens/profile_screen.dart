@@ -7,6 +7,7 @@ import '../core/constants.dart';
 import '../core/theme_provider.dart';
 import '../core/validators.dart';
 import '../widgets/password_meter.dart';
+import 'verify_email_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -105,9 +106,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         firstName: first, lastName: last, phone: phone,
         email: email,
         currentPassword: _emailChanged ? _passwordCtrl.text : null);
+      final emailChanged = _emailChanged;
       auth.updateUser(updated);
       _passwordCtrl.clear();
       setState(() { _status = 'success'; _msg = 'Profile updated.'; });
+      // A new email must be verified — the backend has already sent the code
+      if (emailChanged && !updated.emailVerified && mounted) {
+        VerifyEmailScreen.open(context, sendOnOpen: false);
+      }
     } catch (e) {
       setState(() { _status = 'error'; _msg = e.toString(); });
     } finally {
@@ -226,6 +232,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _sectionTitle('ACCOUNT INFO', textMuted),
                   _row('Email', user.email,
                     textMuted: textMuted, textPrimary: textPrimary, border: border),
+                  _emailStatusRow(user.emailVerified, textMuted: textMuted),
                   _row('Phone', user.phone == null ? 'Not set' : _localPhone(user.phone),
                     textMuted: textMuted, textPrimary: textPrimary, border: border),
                   _row('Serial Number', user.serialNumber,
@@ -443,6 +450,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
     );
+
+  Widget _emailStatusRow(bool verified, {required Color textMuted}) => Column(children: [
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Email Status', style: GoogleFonts.dmSans(
+            fontSize: 13, color: textMuted)),
+          verified
+              ? _chip(Icons.verified_rounded, 'Verified', AppColors.mint)
+              : GestureDetector(
+                  onTap: () => VerifyEmailScreen.open(context),
+                  child: _chip(Icons.error_outline_rounded,
+                    'Not verified · Verify', AppColors.gold),
+                ),
+        ],
+      ),
+    ),
+    Divider(height: 1, color: AppColors.border.withValues(alpha: 0.4)),
+  ]);
+
+  Widget _chip(IconData icon, String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 14, color: color),
+      const SizedBox(width: 5),
+      Text(label, style: GoogleFonts.dmSans(
+        fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+    ]),
+  );
 
   Widget _statusBanner(String status, String msg) {
     final color = status == 'success' ? AppColors.mint : AppColors.alert;

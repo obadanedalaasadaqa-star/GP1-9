@@ -4,6 +4,7 @@ const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
 const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
+const { checkCode, sendEmailCode } = require('../lib/verification');
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ const SAFE_SELECT = {
   firstName: true,
   lastName: true,
   phone: true,
+  emailVerified: true,
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
@@ -72,6 +74,7 @@ router.patch('/me', async (req, res) => {
           return res.status(401).json({ error: 'Current password is incorrect.' });
         }
         data.email = email;
+        data.emailVerified = false; // the new address must be verified again
       }
     }
 
@@ -80,6 +83,7 @@ router.patch('/me', async (req, res) => {
       data,
       select: SAFE_SELECT,
     });
+    if (data.email) await sendEmailCode(user, { ignoreWait: true });
     res.json(user);
   } catch (err) {
     if (err.code === 'P2002') {
@@ -88,6 +92,51 @@ router.patch('/me', async (req, res) => {
     }
     console.error('[user/patch]', err);
     res.status(500).json({ error: 'Failed to update profile.' });
+  }
+});
+
+// POST /api/user/email/send-code — (re)send the email verification code
+router.post('/email/send-code', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId }, select: SAFE_SELECT });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (user.emailVerified) return res.status(400).json({ error: 'Email is already verified.' });
+
+    const result = await sendEmailCode(user);
+    if (result.waitSeconds) {
+      return res.status(429).json({
+        error: `Please wait ${result.waitSeconds}s before requesting a new code.`,
+        waitSeconds: result.waitSeconds,
+      });
+    }
+    if (result.error) return res.status(502).json({ error: result.error });
+    res.json({ message: `Code sent to ${user.email}.` });
+  } catch (err) {
+    console.error('[user/email/send-code]', err);
+    res.status(500).json({ error: 'Failed to send code.' });
+  }
+});
+
+// POST /api/user/email/verify — confirm the email with the 6-digit code
+router.post('/email/verify', async (req, res) => {
+  const code = req.body?.code;
+  if (!code || !/^\d{6}$/.test(String(code).trim())) {
+    return res.status(400).json({ error: 'Enter the 6-digit code.' });
+  }
+
+  try {
+    const problem = await checkCode(req.userId, 'email', code);
+    if (problem) return res.status(400).json({ error: problem });
+
+    const user = await prisma.user.update({
+      where: { id: req.userId },
+      data: { emailVerified: true },
+      select: SAFE_SELECT,
+    });
+    res.json(user);
+  } catch (err) {
+    console.error('[user/email/verify]', err);
+    res.status(500).json({ error: 'Failed to verify email.' });
   }
 });
 

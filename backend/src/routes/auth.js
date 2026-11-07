@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const prisma = require('../lib/prisma');
 const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
+const { sendEmailCode } = require('../lib/verification');
 
 const router = express.Router();
 
@@ -15,6 +16,7 @@ const SAFE_USER_SELECT = {
   firstName: true,
   lastName: true,
   phone: true,
+  emailVerified: true,
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
@@ -65,6 +67,7 @@ router.post('/register', async (req, res) => {
       select: SAFE_USER_SELECT,
     });
 
+    await sendEmailCode(user);
     res.status(201).json({ token: signToken(user.id), user });
   } catch (err) {
     console.error('[register]', err);

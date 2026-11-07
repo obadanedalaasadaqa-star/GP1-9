@@ -6,6 +6,7 @@ import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
+import 'verify_email_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -168,6 +169,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: GoogleFonts.dmSans(
                       fontSize: 13, color: textMuted)),
                   const SizedBox(height: 24),
+
+                  // ── Verify email banner ───────────────────────────────────
+                  if (!user.emailVerified) ...[
+                    GestureDetector(
+                      onTap: () => VerifyEmailScreen.open(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.gold.withValues(alpha: 0.35)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.mark_email_unread_rounded,
+                              color: AppColors.gold, size: 22),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Verify your email',
+                                    style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 14, fontWeight: FontWeight.w700,
+                                      color: textPrimary)),
+                                  const SizedBox(height: 2),
+                                  Text('Confirm ${user.email} to secure your account.',
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 12, color: textMuted)),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded,
+                              color: AppColors.gold),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // ── Active Wallet card ────────────────────────────────────
                   _WalletCard(

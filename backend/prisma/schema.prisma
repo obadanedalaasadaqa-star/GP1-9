@@ -16,14 +16,32 @@ model User {
   firstName     String?
   lastName      String?
   phone         String?  @unique
+  emailVerified Boolean  @default(false)
   serialNumber  String   @unique
   loyaltyPoints Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  receipts Receipt[]
+  receipts          Receipt[]
+  verificationCodes VerificationCode[]
 
   @@map("nexus_users")
+}
+
+// One active code per user per type ("email" now, "phone" later)
+model VerificationCode {
+  id         String   @id @default(uuid())
+  userId     String
+  type       String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int      @default(0)
+  lastSentAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("nexus_verification_codes")
 }
 
 // Future: receipt model (Phase 2)
