@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppConfig {
-  static const String baseUrl = 'http://192.168.1.28:3001/api';
+  static const String baseUrl = 'http://192.168.1.20:3001/api';
 }
 
 class AppColors {
