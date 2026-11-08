@@ -68,4 +68,35 @@ void main() {
     // A single 1.005 JD receipt → 1.01 (was 1.00)
     expect(find.textContaining('1.01 JD'), findsWidgets);
   });
+
+  testWidgets('tapping a receipt on Home opens the full receipt', (tester) async {
+    tester.view.physicalSize = const Size(600, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final client = MockClient((req) async =>
+        http.Response(jsonEncode(receipts.map((r) => r.toJson()).toList()), 200));
+    await http.runWithClient(() async {
+      final auth = AuthProvider();
+      for (var i = 0; i < 20 && auth.loading; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      auth.updateUser(User.fromJson(user));
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider.value(value: auth),
+        ],
+        child: const MaterialApp(home: DashboardScreen()),
+      ));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.tap(find.text('City Pharmacy').first);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }, () => client);
+    expect(find.text('Receipt'), findsOneWidget); // the receipt screen's title
+    expect(find.text('Item prices were not saved for this receipt.'), findsOneWidget);
+  });
 }
