@@ -34,9 +34,9 @@ module.exports = function storeRoutes(limiters) {
            WHERE "serialNumber" = ${parsed.serial}
            RETURNING id, "firstName", email, "emailVerified", "loyaltyPoints"
         ), r AS (
-          INSERT INTO nexus_receipts ("userId", "storeId", "storeName", category, "totalAmount", items, "pointsEarned")
+          INSERT INTO nexus_receipts ("userId", "storeId", "storeName", category, "totalAmount", items, "lineItems", "pointsEarned")
           SELECT u.id, ${store.id}, ${store.name}, ${store.category}, ${parsed.totalAmount}::float8,
-                 ${JSON.stringify(parsed.itemStrings)}::jsonb, ${pointsEarned}::int
+                 ${JSON.stringify(parsed.itemStrings)}::jsonb, ${JSON.stringify(parsed.items)}::jsonb, ${pointsEarned}::int
             FROM u
           RETURNING *
         )
@@ -59,6 +59,7 @@ module.exports = function storeRoutes(limiters) {
       category: row.category,
       totalAmount: row.totalAmount,
       items: row.items,
+      lineItems: row.lineItems,
       pointsEarned: row.pointsEarned,
       createdAt: row.createdAt,
     };

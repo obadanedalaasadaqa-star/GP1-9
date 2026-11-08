@@ -80,6 +80,7 @@ test('done-when: the receipt reaches the phone fast, with the new points', async
   expect(e.receipt.id).toBe(res.body.receiptId);
   expect(e.receipt.storeName).toBe(shop.store.name);
   expect(e.receipt.items).toEqual(['Milk x2']);
+  expect(e.receipt.lineItems).toEqual([{ name: 'Milk', qty: 2, unitPrice: 1.25 }]);
   expect(e.pointsEarned).toBe(2);
   expect(e.loyaltyPoints).toBe(before.body.loyaltyPoints + 2);
 

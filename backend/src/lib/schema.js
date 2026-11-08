@@ -94,6 +94,13 @@ async function ensureSchema() {
       ON nexus_receipts ("userId", "createdAt" DESC);
   `);
   console.log('   DB: nexus_receipts (userId, createdAt) index ready');
+
+  // Full receipt lines from stores: [{ name, qty, unitPrice }]. NULL for older
+  // receipts, which only have the "Milk x2" strings in items.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_receipts ADD COLUMN IF NOT EXISTS "lineItems" JSONB;
+  `);
+  console.log('   DB: nexus_receipts lineItems column ready');
 }
 
 module.exports = { ensureSchema };

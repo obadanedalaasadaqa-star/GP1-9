@@ -84,6 +84,12 @@ describe('POST /api/store/receipts', () => {
     expect(first.storeId).toBe(shop.store.id);
     expect(first.items).toEqual(['Rice 2kg', 'Milk x2', 'Bread']);
     expect(first.pointsEarned).toBe(10);
+    // Full lines for the receipt screen, in the order the cashier sent them.
+    expect(first.lineItems).toEqual([
+      { name: 'Rice 2kg', qty: 1, unitPrice: 7.995 },
+      { name: 'Milk', qty: 2, unitPrice: 1.25 },
+      { name: 'Bread', qty: 1, unitPrice: 0.5 },
+    ]);
   }, SLOW);
 
   test.each([
