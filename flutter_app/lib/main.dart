@@ -14,6 +14,7 @@ import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/archive_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/trends_screen.dart';
 import 'screens/verify_email_screen.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/new_receipt_sheet.dart';
@@ -404,7 +405,7 @@ class _Splash extends StatelessWidget {
   }
 }
 
-// ── Main shell with 3 tabs + floating QR button ──────────────────────────────
+// ── Main shell with 4 tabs + floating QR button ──────────────────────────────
 
 class _MainShell extends StatefulWidget {
   const _MainShell();
@@ -460,6 +461,7 @@ class _MainShellState extends State<_MainShell> {
   static const _screens = [
     DashboardScreen(),
     ArchiveScreen(),
+    TrendsScreen(),
     ProfileScreen(),
   ];
 

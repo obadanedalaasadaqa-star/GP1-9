@@ -5,7 +5,10 @@ import '../core/constants.dart';
 /// "You're offline" strip shown above lists that come from the phone's cache.
 class OfflineBanner extends StatelessWidget {
   final DateTime? savedAt;
-  const OfflineBanner({super.key, this.savedAt});
+
+  /// What is shown from the cache ("receipts", "trends").
+  final String what;
+  const OfflineBanner({super.key, this.savedAt, this.what = 'receipts'});
 
   static String _ago(DateTime t) {
     final d = DateTime.now().difference(t);
@@ -31,7 +34,7 @@ class OfflineBanner extends StatelessWidget {
           const Icon(Icons.cloud_off_rounded, color: AppColors.gold, size: 18),
           const SizedBox(width: 10),
           Expanded(
-            child: Text("You're offline. Showing receipts saved on this phone$when.",
+            child: Text("You're offline. Showing $what saved on this phone$when.",
               style: GoogleFonts.dmSans(fontSize: 12.5, color: AppColors.gold, height: 1.35)),
           ),
         ],

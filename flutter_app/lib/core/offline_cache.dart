@@ -1,25 +1,30 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'receipt_model.dart';
+import 'stats_model.dart';
 import 'user_model.dart';
 
-/// Keeps the signed-in user's profile and receipts on the phone, so the app
-/// still shows them with no internet. Cleared on logout and when another
-/// account signs in, so one account never sees another's receipts.
+/// Keeps the signed-in user's profile, receipts and trends on the phone, so
+/// the app still shows them with no internet. Cleared on logout and when
+/// another account signs in, so one account never sees another's data.
 class OfflineCache {
   static const _userKey     = 'nexus_cache_user';
   static const _receiptsKey = 'nexus_cache_receipts';
   static const _savedAtKey  = 'nexus_cache_saved_at';
+  static const _statsKey        = 'nexus_cache_stats';
+  static const _statsSavedAtKey = 'nexus_cache_stats_saved_at';
 
   // ── User ───────────────────────────────────────────────────────
   /// Save the profile. A different account than the cached one wipes the
-  /// cached receipts first.
+  /// cached receipts and trends first.
   static Future<void> saveUser(User user) async {
     final prefs = await SharedPreferences.getInstance();
     final old = _decodeUser(prefs.getString(_userKey));
     if (old != null && old.id != user.id) {
       await prefs.remove(_receiptsKey);
       await prefs.remove(_savedAtKey);
+      await prefs.remove(_statsKey);
+      await prefs.remove(_statsSavedAtKey);
     }
     await prefs.setString(_userKey, jsonEncode(user.toJson()));
   }
@@ -76,11 +81,41 @@ class OfflineCache {
     return raw == null ? null : DateTime.tryParse(raw)?.toLocal();
   }
 
+  // ── Trends ─────────────────────────────────────────────────────
+  /// One slot: the latest stats replace the older ones. Each period keeps
+  /// its own from/to, so old stats are still labelled with the right months.
+  static Future<void> saveStats(SpendingStats stats) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_statsKey, jsonEncode(stats.toJson()));
+    await prefs.setString(_statsSavedAtKey, DateTime.now().toUtc().toIso8601String());
+  }
+
+  /// The saved stats, or null when missing or broken.
+  static Future<SpendingStats?> loadStats() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_statsKey);
+    if (raw == null) return null;
+    try {
+      return SpendingStats.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// When the stats were last saved from the server.
+  static Future<DateTime?> statsSavedAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_statsSavedAtKey);
+    return raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+  }
+
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_userKey);
     await prefs.remove(_receiptsKey);
     await prefs.remove(_savedAtKey);
+    await prefs.remove(_statsKey);
+    await prefs.remove(_statsSavedAtKey);
   }
 
   static bool _inRange(Receipt r, DateTime from, DateTime to) =>

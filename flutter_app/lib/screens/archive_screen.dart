@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/constants.dart';
+import '../core/money.dart';
 import '../core/period.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
@@ -25,14 +26,6 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
   Period _period = Period.containing(PeriodType.month, DateTime.now());
   int _requestId = 0; // ignores responses from periods the user already left
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
-
-  static const _categoryColors = {
-    'Supermarket': AppColors.blue,
-    'Food':        AppColors.mint,
-    'Pharmacy':    AppColors.violet,
-    'Clothing':    AppColors.gold,
-    'Electronics': AppColors.blueLight,
-  };
 
   static const _filters = [
     (PeriodType.day,    'Day'),
@@ -291,7 +284,7 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
           if (!_loading && _error == null)
             Text(
               '${_receipts.length} receipt${_receipts.length == 1 ? '' : 's'}'
-              ' · ${total.toStringAsFixed(2)} JD',
+              ' · ${formatJd(total)} JD',
               style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
           const SizedBox(height: 20),
         ],
@@ -411,7 +404,6 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
                     _BarChart(
                       totals: totals,
                       maxAmt: maxAmt,
-                      categoryColors: _categoryColors,
                       textMuted: textMuted,
                     ),
                     const SizedBox(height: 16),
@@ -421,8 +413,7 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
                     Wrap(
                       spacing: 12, runSpacing: 8,
                       children: totals.entries.map((e) {
-                        final color = _categoryColors[e.key]
-                            ?? AppColors.textMuted;
+                        final color = CategoryColors.of(e.key);
                         return Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -464,8 +455,7 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
               border: border,
               textPrimary: textPrimary,
               textMuted: textMuted,
-              catColor: _categoryColors[_receipts[i].category]
-                  ?? AppColors.textMuted,
+              catColor: CategoryColors.of(_receipts[i].category),
             ),
             childCount: _receipts.length,
           ),
@@ -480,13 +470,11 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
 class _BarChart extends StatelessWidget {
   final Map<String, double> totals;
   final double maxAmt;
-  final Map<String, Color> categoryColors;
   final Color textMuted;
 
   const _BarChart({
     required this.totals,
     required this.maxAmt,
-    required this.categoryColors,
     required this.textMuted,
   });
 
@@ -501,7 +489,7 @@ class _BarChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: entries.map((e) {
           final frac  = e.value / maxAmt;
-          final color = categoryColors[e.key] ?? AppColors.textMuted;
+          final color = CategoryColors.of(e.key);
           final barH  = chartHeight * frac;
           final abbr  = e.key.length > 4 ? e.key.substring(0, 4) : e.key;
 
