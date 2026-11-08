@@ -10,6 +10,7 @@ import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
 import '../widgets/offline_banner.dart';
+import 'receipt_detail_screen.dart';
 import 'verify_email_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -538,6 +539,15 @@ class _CompactReceiptTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tap anywhere on the tile for the full receipt.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => ReceiptDetailScreen.open(context, receipt),
+      child: _tile(),
+    );
+  }
+
+  Widget _tile() {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
