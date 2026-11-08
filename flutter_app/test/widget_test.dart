@@ -93,7 +93,8 @@ void main() {
       expect(receipt.category, 'Food');
       expect(receipt.totalAmount, 18.75);
       expect(receipt.items, ['Falafel', 'Hummus']);
-      expect(receipt.date, DateTime.parse('2026-05-16T10:00:00.000Z'));
+      expect(receipt.date.toUtc(), DateTime.parse('2026-05-16T10:00:00.000Z'));
+      expect(receipt.date.isUtc, isFalse); // local time for month/day grouping
     });
 
     test('parses integer totalAmount from JSON as double', () {

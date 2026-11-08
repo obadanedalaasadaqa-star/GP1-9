@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/money.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
@@ -472,7 +473,7 @@ class _WalletCard extends StatelessWidget {
               : ShaderMask(
                   shaderCallback: (b) => AppColors.goldGlow.createShader(b),
                   child: Text(
-                    '${monthTotal.toStringAsFixed(2)} JD',
+                    '${formatJd(monthTotal)} JD',
                     style: GoogleFonts.spaceGrotesk(
                       fontSize: 38, fontWeight: FontWeight.w800,
                       color: Colors.white, letterSpacing: -1),
@@ -577,7 +578,7 @@ class _CompactReceiptTile extends StatelessWidget {
           ),
 
           // Amount
-          Text('${receipt.totalAmount.toStringAsFixed(2)} JD',
+          Text('${formatJd(receipt.totalAmount)} JD',
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14, fontWeight: FontWeight.w800,
               color: catColor)),

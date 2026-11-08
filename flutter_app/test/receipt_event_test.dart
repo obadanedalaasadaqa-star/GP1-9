@@ -28,7 +28,8 @@ void main() {
     expect(e.receipt.totalAmount, 3.0);
     expect(e.receipt.items, ['Milk x2', 'Bread']);
     expect(e.receipt.pointsEarned, 3);
-    expect(e.receipt.date, DateTime.utc(2026, 11, 8, 10));
+    expect(e.receipt.date.toUtc(), DateTime.utc(2026, 11, 8, 10));
+    expect(e.receipt.date.isUtc, isFalse); // shown in the phone's time zone
     expect(e.pointsEarned, 3);
     expect(e.loyaltyPoints, 120);
   });

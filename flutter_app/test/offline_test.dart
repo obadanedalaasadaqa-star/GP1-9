@@ -41,7 +41,7 @@ void main() {
   test('receipts and users survive a JSON round trip', () {
     final r = receipt('r1', nov3);
     final back = Receipt.fromJson(r.toJson());
-    expect([back.id, back.storeName, back.totalAmount, back.items, back.date, back.pointsEarned],
+    expect([back.id, back.storeName, back.totalAmount, back.items, back.date.toUtc(), back.pointsEarned],
         [r.id, r.storeName, r.totalAmount, r.items, r.date, r.pointsEarned]);
     final u = user('u1');
     final ub = User.fromJson(u.toJson());
