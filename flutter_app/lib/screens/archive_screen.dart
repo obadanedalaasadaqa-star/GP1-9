@@ -422,7 +422,7 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
                               decoration: BoxDecoration(
                                 color: color, shape: BoxShape.circle)),
                             const SizedBox(width: 5),
-                            Text('${e.key}  ${e.value.toStringAsFixed(0)} JD',
+                            Text('${e.key}  ${formatJd(e.value, decimals: 0)} JD',
                               style: GoogleFonts.dmSans(
                                 fontSize: 11, color: textMuted)),
                           ],
@@ -499,7 +499,7 @@ class _BarChart extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text(e.value.toStringAsFixed(0),
+                  Text(formatJd(e.value, decimals: 0),
                     style: GoogleFonts.spaceGrotesk(
                       fontSize: 9, fontWeight: FontWeight.w700, color: color)),
                   const SizedBox(height: 4),
@@ -615,7 +615,7 @@ class _ReceiptTile extends StatelessWidget {
           const SizedBox(width: 8),
 
           // Amount
-          Text('${receipt.totalAmount.toStringAsFixed(2)} JD',
+          Text('${formatJd(receipt.totalAmount)} JD',
             style: GoogleFonts.spaceGrotesk(
               fontSize: 15, fontWeight: FontWeight.w800, color: catColor)),
         ],

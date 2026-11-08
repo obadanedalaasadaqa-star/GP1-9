@@ -23,7 +23,8 @@ class Receipt {
     category: json['category'] as String,
     totalAmount: (json['totalAmount'] as num).toDouble(),
     items: (json['items'] as List<dynamic>).map((e) => e as String).toList(),
-    date: DateTime.parse(json['createdAt'] as String),
+    // Local time, so month/day grouping and shown dates follow the phone (Jordan), not UTC.
+    date: DateTime.parse(json['createdAt'] as String).toLocal(),
     pointsEarned: (json['pointsEarned'] as num?)?.toInt() ?? 0,
   );
 

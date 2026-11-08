@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
+import '../core/money.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
 
@@ -91,7 +92,7 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
           const SizedBox(height: 18),
 
           // Total + points
-          Text('${r.totalAmount.toStringAsFixed(2)} JD',
+          Text('${formatJd(r.totalAmount)} JD',
             style: GoogleFonts.spaceGrotesk(
               fontSize: 40, fontWeight: FontWeight.w800,
               color: textPrimary, letterSpacing: -1)),
