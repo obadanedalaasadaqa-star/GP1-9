@@ -59,13 +59,65 @@ cd backend
 npm test
 ```
 
-The tests (Jest + Supertest) use the database in `backend/.env`. They create
-throwaway `test_…@nexus.test` users and delete them at the end. If a run
-crashes, remove any leftovers in the Supabase SQL editor:
+The tests (Jest + Supertest + socket.io-client) use the database in
+`backend/.env`. They create throwaway `test_…@nexus.test` users and
+`test_store_…` stores and delete them at the end. `npm test` creates any
+missing tables first (Jest `globalSetup` runs `ensureSchema()`), so a fresh
+test DB works without `npm start`. If a run crashes, remove any leftovers in
+the Supabase SQL editor:
 
 ```sql
-DELETE FROM nexus_users WHERE email LIKE 'test\_%@nexus.test';
+DELETE FROM nexus_users  WHERE email LIKE 'test\_%@nexus.test';
+DELETE FROM nexus_stores WHERE name  LIKE 'test\_store\_%';
 ```
+
+### Email
+
+`src/lib/mailer.js` picks the provider on every send:
+
+| Set in `.env` | Provider | Where |
+|---|---|---|
+| `BREVO_API_KEY` + `MAIL_FROM` (+ `MAIL_FROM_NAME`) | Brevo HTTPS API | Render (Render blocks SMTP) |
+| `GMAIL_USER` + `GMAIL_APP_PASSWORD` | Gmail SMTP | Local only |
+| nothing | Dev mode: codes and receipt summaries are printed in the server log | Local |
+
+The startup log says which one is active (`Mail: Brevo API from …`).
+
+**Third-party data:** when Brevo is configured, Brevo (Sendinblue SAS, France)
+receives each recipient's email address and first name, the verification
+codes and, for receipt copies, the store name, items and totals. Without
+Brevo, nothing leaves our server except through Gmail (local only).
+
+### Store Simulator (live receipts)
+
+The backend serves a cashier web page at `/store/`
+(`http://localhost:3001/store/` locally,
+`https://nexus-backend-e0di.onrender.com/store/` online). A cashier signs in
+with a **store key**, builds a cart, scans the customer's Nexus QR code with
+the webcam (or types the serial) and sends the receipt. The phone gets it
+live over Socket.IO and shows a "New receipt" sheet.
+
+Create a store (runs against the DB in `backend/.env`, which Render also uses):
+
+```bash
+cd backend
+npm run store:create -- "Carrefour" Supermarket
+# Categories: Supermarket, Food, Pharmacy, Clothing, Electronics
+```
+
+The key is printed **once** and only its hash is stored. Keep it private:
+never put store keys in git, notes or screenshots. To revoke a store, delete
+its row in the Supabase SQL editor (its receipts stay in the users' archives,
+with `storeId` set to NULL):
+
+```sql
+DELETE FROM nexus_stores WHERE name = 'Carrefour';
+```
+
+The server caches valid store keys in memory for 60 seconds, so a revoked
+store keeps working for **up to 60 s** (or until the server restarts).
+
+A lost key cannot be recovered: create a new store and delete the old row.
 
 ---
 
@@ -128,13 +180,19 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | GET | `/api/user/receipts` | Get last 50 receipts |
 | POST | `/api/receipts` | Create a new receipt |
 | POST | `/api/receipts/seed` | Seed demo receipts (idempotent) |
+| GET | `/api/store/me` | Store login: check a store key |
+| POST | `/api/store/receipts` | Store sends a receipt to a customer serial |
 
-All routes except `/auth/*` require an `Authorization: Bearer <token>` header.
+`/api/user/*` and `/api/receipts*` require an `Authorization: Bearer <token>`
+header. `/api/store/*` requires an `X-Store-Key: nxs_sk_…` header instead.
+
+Live updates: the app opens a Socket.IO connection to the server root with
+`auth: { token }` and receives `receipt:new` events in its own room.
 
 ---
 
 ## Tech Stack
 
-- **Mobile:** Flutter 3.11, Dart, Provider, http, shared_preferences, qr_flutter, google_fonts
-- **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken, uuid
+- **Mobile:** Flutter 3.11, Dart, Provider, http, shared_preferences, qr_flutter, google_fonts, socket_io_client
+- **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken, uuid, Socket.IO, Brevo (email), jsQR (Store Simulator)
 - **Database:** Supabase (PostgreSQL)
