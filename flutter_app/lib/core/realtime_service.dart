@@ -76,6 +76,10 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
   ValueListenable<int> get refreshTick => _refreshTick;
   bool get connected => _socket?.connected ?? false;
 
+  /// Set before [start] when the app opened offline: the first connect then
+  /// syncs too, so the lists and points replace the saved copies.
+  bool syncOnFirstConnect = false;
+
   static RealtimeSocket _defaultSocket(String url, String token) => _IoRealtimeSocket(
         io.io(
           url,
@@ -122,7 +126,8 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
     _serverDisconnectRetried = false;
     final resumed = _syncOnConnect;
     _cancelResumeSync();
-    if (_hadConnected || resumed) _sync();
+    if (_hadConnected || resumed || syncOnFirstConnect) _sync();
+    syncOnFirstConnect = false;
     _hadConnected = true;
     notifyListeners();
   }

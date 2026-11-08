@@ -41,6 +41,19 @@ class User {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'email': email,
+    'name': name,
+    'firstName': firstName,
+    'lastName': lastName,
+    'phone': phone,
+    'emailVerified': emailVerified,
+    'serialNumber': serialNumber,
+    'loyaltyPoints': loyaltyPoints,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+  };
+
   User copyWith({
     String? name,
     String? firstName,

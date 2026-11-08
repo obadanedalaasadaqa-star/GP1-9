@@ -27,6 +27,16 @@ class Receipt {
     pointsEarned: (json['pointsEarned'] as num?)?.toInt() ?? 0,
   );
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'storeName': storeName,
+    'category': category,
+    'totalAmount': totalAmount,
+    'items': items,
+    'createdAt': date.toUtc().toIso8601String(),
+    'pointsEarned': pointsEarned,
+  };
+
   // Aggregate totals by category from a list
   static Map<String, double> totalsByCategory(List<Receipt> receipts) {
     final map = <String, double>{};
