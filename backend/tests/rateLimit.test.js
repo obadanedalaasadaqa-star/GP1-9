@@ -6,12 +6,14 @@ const { createApp } = require('../src/app');
 const prisma = require('../src/lib/prisma');
 const mailer = require('./mailerMock');
 const {
-  PASSWORD, makeApp, uniqueEmail, uniquePhone, track, registerUser, cleanup,
+  PASSWORD, makeApp, uniqueEmail, uniquePhone, track, registerUser, createTestStore, cleanup,
 } = require('./helpers');
 
 // Users are created on the unlimited app, so the limited apps' register
 // limiter never affects them. Each createApp() has its own counters.
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
+// Many DB round trips per test; the default 30 s is too tight on the pooler.
+const SLOW = 90_000;
 const login = (app, email, password) =>
   request(app).post('/api/auth/login').send({ email, password });
 
@@ -19,7 +21,7 @@ let u1, u2;
 beforeAll(async () => {
   u1 = await registerUser(makeApp());
   u2 = await registerUser(makeApp());
-});
+}, SLOW);
 afterAll(cleanup);
 
 // Silence the "[rate-limit] ... blocked" log lines during tests.
@@ -50,7 +52,7 @@ describe('login limiter', () => {
     }
     expect((await login(app, u1.email, 'Wrong@2026')).status).toBe(401);
     expect((await login(app, u1.email, 'Wrong@2026')).status).toBe(429);
-  });
+  }, SLOW);
 });
 
 describe('verifyCode limiter', () => {
@@ -71,8 +73,6 @@ describe('verifyCode limiter', () => {
 });
 
 describe('sendCode limiter', () => {
-  // Many DB round trips per test; the default 30 s is too tight on the pooler.
-  const SLOW = 90_000;
   const setLastSent = (u, date) => prisma.verificationCode.update({
     where: { userId_type: { userId: u.user.id, type: 'email' } },
     data: { lastSentAt: date },
@@ -166,4 +166,43 @@ describe('register limiter', () => {
     expect(second.status).toBe(429);
     expect(second.body.error).toBe('Too many accounts created from this network. Try again later.');
   });
+});
+
+describe('store limiters', () => {
+  const ITEMS = [{ name: 'Milk', qty: 1, unitPrice: 1 }];
+  const sendReceipt = (app, key, customerSerial) => request(app).post('/api/store/receipts')
+    .set('X-Store-Key', key).send({ customerSerial, items: ITEMS, totalAmount: 1 });
+
+  test('storeAuth only counts 401s: 3 wrong keys, then 429', async () => {
+    const shop = await createTestStore();
+    const app = createApp({ rateLimit: { storeAuth: { limit: 3 } } });
+
+    // A valid key with an unknown serial (404) does not count.
+    for (let i = 0; i < 4; i++) {
+      expect((await sendReceipt(app, shop.key, 'NXS-00000-00000')).status).toBe(404);
+    }
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app).get('/api/store/me').set('X-Store-Key', 'nxs_sk_wrong');
+      expect(res.status).toBe(401);
+    }
+    const blocked = await request(app).get('/api/store/me').set('X-Store-Key', 'nxs_sk_wrong');
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe('Too many wrong store keys. Try again in a few minutes.');
+  }, SLOW);
+
+  test('storeReceipts is counted per store', async () => {
+    const shopA = await createTestStore();
+    const shopB = await createTestStore();
+    const app = createApp({ rateLimit: { storeReceipts: { limit: 2 } } });
+    const serial = u1.user.serialNumber;
+
+    expect((await sendReceipt(app, shopA.key, serial)).status).toBe(201);
+    expect((await sendReceipt(app, shopA.key, serial)).status).toBe(201);
+    const blocked = await sendReceipt(app, shopA.key, serial);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe('Too many receipts from this store. Try again in a minute.');
+
+    // Same IP, another store: still allowed.
+    expect((await sendReceipt(app, shopB.key, serial)).status).toBe(201);
+  }, SLOW);
 });

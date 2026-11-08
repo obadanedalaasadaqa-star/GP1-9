@@ -3,6 +3,9 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const { makeApp, uniqueEmail, registerUser, cleanup } = require('./helpers');
 
+// Many sequential DB round trips; the default 30 s is too tight on the pooler.
+const SLOW = 90_000;
+
 const app = makeApp();
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
@@ -75,7 +78,7 @@ describe('PATCH /api/user/me', () => {
       .send({ firstName: 'Sara', lastName: 'Ali', email: other.email, currentPassword: u.password });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('Email already registered.');
-  });
+  }, SLOW);
 
   test('email change: 200 with the right password, and the email is unverified again', async () => {
     const newEmail = uniqueEmail();

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus Store Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="store.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1 class="brand">NEXUS</h1>
+      <p class="subtitle">STORE SIMULATOR</p>
+    </div>
+    <div id="store-badge" class="store-badge" hidden>
+      <span id="store-label"></span>
+      <button id="sign-out" class="btn btn-ghost" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <!-- 1. Store login -->
+  <main id="login-view" class="login">
+    <form id="login-form" class="card">
+      <h2>Store login</h2>
+      <p class="muted">Paste the store key you got from <code>npm run store:create</code>.</p>
+      <label for="store-key">Store key</label>
+      <input id="store-key" type="password" autocomplete="off" spellcheck="false" placeholder="nxs_sk_...">
+      <p id="login-error" class="error" role="alert"></p>
+      <button id="login-btn" class="btn btn-gold" type="submit">Sign in</button>
+    </form>
+  </main>
+
+  <main id="pos-view" class="pos" hidden>
+    <!-- 2. Products -->
+    <section class="card">
+      <h2>Products</h2>
+      <div id="products" class="products"></div>
+    </section>
+
+    <!-- 3. Cart -->
+    <section class="card">
+      <div class="row-between">
+        <h2>Cart</h2>
+        <button id="clear-cart" class="btn btn-ghost" type="button">Clear</button>
+      </div>
+      <ul id="cart" class="cart"></ul>
+      <p id="cart-empty" class="muted">Tap a product to add it.</p>
+      <div class="total-row">
+        <span>Total</span>
+        <span id="total" class="total">0.00 JD</span>
+      </div>
+    </section>
+
+    <!-- 4-6. Customer + send -->
+    <section class="card">
+      <h2>Customer</h2>
+      <button id="scan-btn" class="btn btn-mint" type="button">Scan QR</button>
+      <div id="scanner" class="scanner" hidden>
+        <video id="video" playsinline muted></video>
+        <button id="stop-scan" class="btn btn-ghost" type="button">Stop camera</button>
+      </div>
+      <p id="scan-error" class="error" role="alert"></p>
+
+      <label for="serial">Or type the serial</label>
+      <input id="serial" type="text" autocomplete="off" spellcheck="false" placeholder="NXS-XXXXX-XXXXX" maxlength="15">
+
+      <label class="check">
+        <input id="email-copy" type="checkbox">
+        Email a copy to the customer (verified emails only)
+      </label>
+
+      <p id="send-error" class="error" role="alert"></p>
+      <button id="send-btn" class="btn btn-gold" type="button" disabled>Send receipt</button>
+
+      <div id="sent" class="sent" hidden>
+        <p class="sent-title">Receipt sent ✓</p>
+        <p id="sent-detail" class="sent-detail"></p>
+        <button id="new-sale" class="btn btn-gold" type="button">New sale</button>
+      </div>
+    </section>
+  </main>
+
+  <canvas id="frame" hidden></canvas>
+  <script src="vendor/jsQR.js"></script>
+  <script src="store.js"></script>
+</body>
+</html>

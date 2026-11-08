@@ -10,6 +10,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "test": "jest --runInBand",
+    "store:create": "node scripts/create-store.js",
     "db:studio": "npx prisma studio"
   },
   "dependencies": {
@@ -20,7 +21,9 @@
     "express": "^4.21.0",
     "express-rate-limit": "^7.5.1",
     "jsonwebtoken": "^9.0.2",
+    "jsqr": "^1.4.0",
     "nodemailer": "^6.10.1",
+    "socket.io": "^4.8.4",
     "uuid": "^10.0.0"
   },
   "devDependencies": {
@@ -28,6 +31,7 @@
     "nodemon": "^3.1.7",
     "pg": "^8.20.0",
     "prisma": "^5.22.0",
+    "socket.io-client": "^4.8.4",
     "supertest": "^7.3.2"
   },
   "jest": {
@@ -35,6 +39,7 @@
     "testMatch": [
       "**/tests/**/*.test.js"
     ],
+    "globalSetup": "<rootDir>/tests/globalSetup.js",
     "setupFiles": [
       "<rootDir>/tests/env.js"
     ],

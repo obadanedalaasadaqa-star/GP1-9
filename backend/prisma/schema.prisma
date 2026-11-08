@@ -44,10 +44,24 @@ model VerificationCode {
   @@map("nexus_verification_codes")
 }
 
-// Future: receipt model (Phase 2)
+// Stores that send receipts. apiKeyHash = SHA-256 of the store key.
+model Store {
+  id         String   @id @default(uuid())
+  name       String
+  category   String
+  apiKeyHash String   @unique
+  createdAt  DateTime @default(now())
+
+  receipts Receipt[]
+
+  @@map("nexus_stores")
+}
+
+// Receipts (storeId is set when a store sent it)
 model Receipt {
   id          String   @id @default(uuid())
   userId      String
+  storeId     String?
   storeName   String
   category    String
   totalAmount Float
@@ -55,7 +69,8 @@ model Receipt {
   pointsEarned Int     @default(0)
   createdAt   DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   @@map("nexus_receipts")
 }

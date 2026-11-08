@@ -4,6 +4,9 @@ const request = require('supertest');
 const { lastCodeFor } = require('./mailerMock');
 const { makeApp, registerUser, cleanup } = require('./helpers');
 
+// Many sequential DB round trips; the default 30 s is too tight on the pooler.
+const SLOW = 90_000;
+
 const app = makeApp();
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
@@ -72,5 +75,5 @@ describe('wrong codes', () => {
       .send({ code: lastCodeFor(v.email) });
     expect(right.status).toBe(400);
     expect(right.body.error).toMatch(/Too many wrong attempts/);
-  });
+  }, SLOW);
 });

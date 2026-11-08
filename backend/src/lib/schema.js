@@ -55,6 +55,38 @@ async function ensureSchema() {
     );
   `);
   console.log('   DB: email verification ready');
+
+  // Stores that send receipts (Store Simulator). apiKeyHash = SHA-256 of the
+  // store key; the plain key is shown once by scripts/create-store.js.
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_stores (
+      id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      name         TEXT        NOT NULL,
+      category     TEXT        NOT NULL,
+      "apiKeyHash" TEXT        NOT NULL UNIQUE,
+      "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  // Which store sent a receipt (NULL for older/self-created receipts).
+  // The FK is added by name only if missing, so it never stacks up on reboots.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_receipts ADD COLUMN IF NOT EXISTS "storeId" TEXT;
+  `);
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'nexus_receipts_storeId_fkey'
+           AND conrelid = 'nexus_receipts'::regclass
+      ) THEN
+        ALTER TABLE nexus_receipts
+          ADD CONSTRAINT "nexus_receipts_storeId_fkey"
+          FOREIGN KEY ("storeId") REFERENCES nexus_stores(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+  console.log('   DB: nexus_stores table ready');
 }
 
 module.exports = { ensureSchema };

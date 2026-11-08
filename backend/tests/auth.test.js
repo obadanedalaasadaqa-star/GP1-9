@@ -6,6 +6,9 @@ const {
   PASSWORD, makeApp, uniqueEmail, uniquePhone, track, registerUser, cleanup,
 } = require('./helpers');
 
+// Many sequential DB round trips; the default 30 s is too tight on the pooler.
+const SLOW = 90_000;
+
 const app = makeApp();
 
 function newUserBody(overrides = {}) {
@@ -74,7 +77,7 @@ describe('POST /api/auth/register', () => {
       .send(newUserBody({ email: first.email }));
     expect(res2.status).toBe(409);
     expect(res2.body.error).toBe('Email already registered.');
-  });
+  }, SLOW);
 
   test('409 for a phone that is already registered', async () => {
     const first = newUserBody();
@@ -86,7 +89,7 @@ describe('POST /api/auth/register', () => {
       .send(newUserBody({ phone: first.phone }));
     expect(res2.status).toBe(409);
     expect(res2.body.error).toBe('Phone number already registered.');
-  });
+  }, SLOW);
 });
 
 describe('POST /api/auth/login', () => {

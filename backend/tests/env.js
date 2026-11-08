@@ -16,3 +16,5 @@ if (!process.env.JWT_SECRET || !process.env.DATABASE_URL) {
 // real mailer only prints a [mail:dev] line.
 delete process.env.GMAIL_USER;
 delete process.env.GMAIL_APP_PASSWORD;
+delete process.env.BREVO_API_KEY;
+delete process.env.MAIL_FROM;

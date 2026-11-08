@@ -3,6 +3,9 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const { makeApp, registerUser, cleanup } = require('./helpers');
 
+// Many sequential DB round trips; the default 30 s is too tight on the pooler.
+const SLOW = 90_000;
+
 const app = makeApp();
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
@@ -89,5 +92,5 @@ describe('POST /api/receipts/seed', () => {
 
     const again = await request(app).post('/api/receipts/seed').set(auth(b.token));
     expect(again.body.seeded).toBe(false);
-  });
+  }, SLOW);
 });
