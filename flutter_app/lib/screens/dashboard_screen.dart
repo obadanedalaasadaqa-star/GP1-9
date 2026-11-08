@@ -8,6 +8,7 @@ import '../core/constants.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
+import '../widgets/offline_banner.dart';
 import 'verify_email_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -19,6 +20,8 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   List<Receipt> _receipts = [];
   bool _loading = true;
+  bool _offline = false;     // showing receipts saved on the phone
+  DateTime? _savedAt;
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
   int _requestId = 0; // ignores responses older than the latest load
 
@@ -54,8 +57,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _load() async {
     final id = ++_requestId;
     try {
-      final receipts = await ApiClient.getReceipts();
-      if (mounted && id == _requestId) setState(() { _receipts = receipts; _loading = false; });
+      final result = await ApiClient.loadReceipts();
+      if (mounted && id == _requestId) {
+        setState(() {
+          _receipts = result.receipts;
+          _offline  = result.offline;
+          _savedAt  = result.savedAt;
+          _loading  = false;
+        });
+      }
     } catch (_) {
       if (mounted && id == _requestId) setState(() => _loading = false);
     }
@@ -139,6 +149,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_offline) ...[
+                    OfflineBanner(savedAt: _savedAt),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Greeting row ──────────────────────────────────────────
                   Row(

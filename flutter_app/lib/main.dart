@@ -434,6 +434,8 @@ class _MainShellState extends State<_MainShell> {
       _realtime.syncs.listen((_) => _onSync()),
       _realtime.unauthorized.listen((_) => _onSessionExpired()),
     ]);
+    // Opened offline with the saved profile: refresh everything once connected.
+    _realtime.syncOnFirstConnect = context.read<AuthProvider>().offline;
     _realtime.start();
 
     // Right after registering, go straight to email verification

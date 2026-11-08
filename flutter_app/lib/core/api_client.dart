@@ -2,10 +2,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'constants.dart';
+import 'offline_cache.dart';
 import 'receipt_model.dart';
 import 'user_model.dart';
 
 const _kTimeout = Duration(seconds: 15);
+const _kUnreachable = "Can't reach the Nexus server. Check your connection and try again.";
+
+/// Receipts plus where they came from. [offline]: the server couldn't be
+/// reached, so these are the copies saved on the phone (from [savedAt]).
+typedef ReceiptsResult = ({List<Receipt> receipts, bool offline, DateTime? savedAt});
 
 class ApiException implements Exception {
   final String message;
@@ -236,6 +242,33 @@ class ApiClient {
     return list
         .map((e) => Receipt.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// [getReceipts] that saves what it gets on the phone, and falls back to
+  /// the saved copies when the server can't be reached. A real answer from
+  /// our server (401, 400, ...) is still thrown, never hidden by the cache.
+  static Future<ReceiptsResult> loadReceipts({DateTime? from, DateTime? to}) async {
+    try {
+      final receipts = await getReceipts(from: from, to: to);
+      try {
+        await OfflineCache.saveReceipts(receipts, from: from, to: to);
+      } catch (_) {
+        // Saving is best effort: the fresh list is still shown.
+      }
+      return (receipts: receipts, offline: false, savedAt: null);
+    } on ApiException catch (e) {
+      if (e.fromServer) rethrow;
+      return _fromCache(from, to);
+    } catch (_) {
+      // No internet, DNS failure, connection reset, ...
+      return _fromCache(from, to);
+    }
+  }
+
+  static Future<ReceiptsResult> _fromCache(DateTime? from, DateTime? to) async {
+    final cached = await OfflineCache.loadReceipts(from: from, to: to);
+    if (cached == null) throw ApiException(_kUnreachable);
+    return (receipts: cached, offline: true, savedAt: await OfflineCache.savedAt());
   }
 
 }

@@ -127,6 +127,19 @@ void main() {
     expect(syncs, 1);
   });
 
+  test('opened offline: the first connect syncs once, so saved copies get replaced', () async {
+    service.syncOnFirstConnect = true;
+    await service.start();
+    var syncs = 0;
+    service.syncs.listen((_) => syncs++);
+
+    socket().fire('connect');
+    await flush();
+    expect(service.refreshTick.value, 1);
+    expect(syncs, 1);
+    expect(service.syncOnFirstConnect, isFalse);
+  });
+
   test('resume while disconnected reconnects and syncs once, when it connects', () async {
     await service.start();
     socket().fire('connect');

@@ -8,6 +8,7 @@ import '../core/period.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
+import '../widgets/offline_banner.dart';
 
 class ArchiveScreen extends StatefulWidget {
   const ArchiveScreen({super.key});
@@ -19,6 +20,8 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
   List<Receipt> _receipts = [];
   bool _loading = true;
   String? _error;
+  bool _offline = false;     // showing receipts saved on the phone
+  DateTime? _savedAt;
   Period _period = Period.containing(PeriodType.month, DateTime.now());
   int _requestId = 0; // ignores responses from periods the user already left
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
@@ -68,10 +71,16 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
     final id = ++_requestId;
     if (!silent) setState(() { _loading = true; _error = null; });
     try {
-      final receipts = await ApiClient.getReceipts(
+      final result = await ApiClient.loadReceipts(
         from: _period.start, to: _period.end);
       if (mounted && id == _requestId) {
-        setState(() { _receipts = receipts; _loading = false; _error = null; });
+        setState(() {
+          _receipts = result.receipts;
+          _offline  = result.offline;
+          _savedAt  = result.savedAt;
+          _loading  = false;
+          _error    = null;
+        });
       }
     } catch (e) {
       // A silent failure only shows the error if nothing is on screen yet
@@ -275,6 +284,10 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
           ),
           const SizedBox(height: 10),
 
+          if (!_loading && _error == null && _offline) ...[
+            OfflineBanner(savedAt: _savedAt),
+            const SizedBox(height: 10),
+          ],
           if (!_loading && _error == null)
             Text(
               '${_receipts.length} receipt${_receipts.length == 1 ? '' : 's'}'
