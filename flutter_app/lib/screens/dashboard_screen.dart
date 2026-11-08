@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
 import 'verify_email_screen.dart';
@@ -17,6 +19,8 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   List<Receipt> _receipts = [];
   bool _loading = true;
+  ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
+  int _requestId = 0; // ignores responses older than the latest load
 
   static const _categoryColors = {
     'Supermarket': AppColors.blue,
@@ -32,12 +36,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_refreshTick == null) {
+      _refreshTick = context.read<RealtimeService?>()?.refreshTick;
+      _refreshTick?.addListener(_load); // _load already refreshes silently
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTick?.removeListener(_load);
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    final id = ++_requestId;
     try {
       final receipts = await ApiClient.getReceipts();
-      if (mounted) setState(() { _receipts = receipts; _loading = false; });
+      if (mounted && id == _requestId) setState(() { _receipts = receipts; _loading = false; });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && id == _requestId) setState(() => _loading = false);
     }
   }
 

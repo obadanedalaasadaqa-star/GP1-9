@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../core/period.dart';
+import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
 
@@ -19,6 +21,7 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
   String? _error;
   Period _period = Period.containing(PeriodType.month, DateTime.now());
   int _requestId = 0; // ignores responses from periods the user already left
+  ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
 
   static const _categoryColors = {
     'Supermarket': AppColors.blue,
@@ -42,17 +45,38 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_refreshTick == null) {
+      _refreshTick = context.read<RealtimeService?>()?.refreshTick;
+      _refreshTick?.addListener(_silentLoad);
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTick?.removeListener(_silentLoad);
+    super.dispose();
+  }
+
+  void _silentLoad() => _load(silent: true);
+
+  /// [silent]: background refresh. No spinner, and the current list stays
+  /// if it fails.
+  Future<void> _load({bool silent = false}) async {
     final id = ++_requestId;
-    setState(() { _loading = true; _error = null; });
+    if (!silent) setState(() { _loading = true; _error = null; });
     try {
       final receipts = await ApiClient.getReceipts(
         from: _period.start, to: _period.end);
       if (mounted && id == _requestId) {
-        setState(() { _receipts = receipts; _loading = false; });
+        setState(() { _receipts = receipts; _loading = false; _error = null; });
       }
     } catch (e) {
-      if (mounted && id == _requestId) {
+      // A silent failure only shows the error if nothing is on screen yet
+      // (it replaced a first load that was still spinning).
+      if (mounted && id == _requestId && (!silent || _loading)) {
         setState(() { _error = e.toString(); _loading = false; });
       }
     }

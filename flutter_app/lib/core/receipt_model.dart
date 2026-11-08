@@ -5,6 +5,7 @@ class Receipt {
   final double totalAmount;
   final List<String> items;
   final DateTime date;
+  final int pointsEarned;
 
   const Receipt({
     required this.id,
@@ -13,6 +14,7 @@ class Receipt {
     required this.totalAmount,
     required this.items,
     required this.date,
+    this.pointsEarned = 0,
   });
 
   factory Receipt.fromJson(Map<String, dynamic> json) => Receipt(
@@ -22,6 +24,7 @@ class Receipt {
     totalAmount: (json['totalAmount'] as num).toDouble(),
     items: (json['items'] as List<dynamic>).map((e) => e as String).toList(),
     date: DateTime.parse(json['createdAt'] as String),
+    pointsEarned: (json['pointsEarned'] as num?)?.toInt() ?? 0,
   );
 
   // Aggregate totals by category from a list

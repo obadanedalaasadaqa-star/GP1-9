@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'core/api_client.dart';
 import 'core/auth_provider.dart';
 import 'core/constants.dart';
+import 'core/realtime_service.dart';
+import 'core/receipt_event.dart';
 import 'core/theme_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -12,6 +16,7 @@ import 'screens/archive_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/verify_email_screen.dart';
 import 'widgets/bottom_nav.dart';
+import 'widgets/new_receipt_sheet.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -410,9 +415,27 @@ class _MainShell extends StatefulWidget {
 class _MainShellState extends State<_MainShell> {
   int _index = 0;
 
+  // Live receipts. Created per shell, so logout (which replaces the shell
+  // with AuthScreen) closes the socket.
+  late final RealtimeService _realtime;
+  final List<StreamSubscription<void>> _subs = [];
+
+  // Open sheets, kept as routes so exactly that sheet can be closed later.
+  ModalBottomSheetRoute<void>? _qrRoute;
+  ModalBottomSheetRoute<void>? _receiptRoute;
+  bool _expiring = false;
+
   @override
   void initState() {
     super.initState();
+    _realtime = RealtimeService();
+    _subs.addAll([
+      _realtime.receipts.listen(_onReceipt),
+      _realtime.syncs.listen((_) => _onSync()),
+      _realtime.unauthorized.listen((_) => _onSessionExpired()),
+    ]);
+    _realtime.start();
+
     // Right after registering, go straight to email verification
     // (the backend has already sent the code).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -423,45 +446,135 @@ class _MainShellState extends State<_MainShell> {
     });
   }
 
+  @override
+  void dispose() {
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    _realtime.dispose();
+    super.dispose();
+  }
+
   static const _screens = [
     DashboardScreen(),
     ArchiveScreen(),
     ProfileScreen(),
   ];
 
+  // Same route showModalBottomSheet builds, but we keep the object.
+  ModalBottomSheetRoute<void> _sheetRoute(WidgetBuilder builder) {
+    final navigator = Navigator.of(context);
+    final localizations = MaterialLocalizations.of(context);
+    return ModalBottomSheetRoute<void>(
+      builder: builder,
+      capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierLabel: localizations.scrimLabel,
+      barrierOnTapHint: localizations.scrimOnTapHint(localizations.bottomSheetLabel),
+      modalBarrierColor: Theme.of(context).bottomSheetTheme.modalBarrierColor,
+    );
+  }
+
+  // Close exactly [route] if it is still open. On top: animated pop.
+  // Under another route (e.g. VerifyEmailScreen): removed in place.
+  void _closeSheet(ModalBottomSheetRoute<void>? route) {
+    if (route == null || !route.isActive) return;
+    final navigator = Navigator.of(context);
+    if (route.isCurrent) {
+      navigator.pop();
+    } else {
+      navigator.removeRoute(route);
+    }
+  }
+
   void _showQrModal() {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _QrSheet(
-        qrData: 'NEXUS:${user.serialNumber}:${user.id}',
-        serial: user.serialNumber,
-      ),
-    );
+    final route = _sheetRoute((_) => _QrSheet(
+      qrData: 'NEXUS:${user.serialNumber}:${user.id}',
+      serial: user.serialNumber,
+    ));
+    _qrRoute = route;
+    // whenComplete also runs on swipe-dismiss, so the field never points at a dead route.
+    Navigator.of(context).push(route).whenComplete(() {
+      if (_qrRoute == route) _qrRoute = null;
+    });
+  }
+
+  // A store sent a receipt: update the points, swap any open sheet for the
+  // "New receipt" sheet. Dashboard/Archive reload through refreshTick.
+  void _onReceipt(ReceiptEvent e) {
+    if (!mounted || _expiring) return;
+    final auth = context.read<AuthProvider>();
+    final user = auth.user;
+    if (user != null) auth.updateUser(user.copyWith(loyaltyPoints: e.loyaltyPoints));
+
+    _closeSheet(_qrRoute);
+    _closeSheet(_receiptRoute);
+
+    late final ModalBottomSheetRoute<void> route;
+    route = _sheetRoute((_) => NewReceiptSheet(
+      receipt: e.receipt,
+      pointsEarned: e.pointsEarned,
+      onViewArchive: () {
+        _closeSheet(route);
+        if (mounted) setState(() => _index = 1);
+      },
+      onDone: () => _closeSheet(route),
+    ));
+    _receiptRoute = route;
+    Navigator.of(context).push(route).whenComplete(() {
+      if (_receiptRoute == route) _receiptRoute = null;
+    });
+  }
+
+  // Reconnect or resume: refresh the user (points). A 401 means the session ended.
+  Future<void> _onSync() async {
+    try {
+      await context.read<AuthProvider>().refreshUser();
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) _onSessionExpired();
+    } catch (_) {
+      // Offline or server down: the next sync retries.
+    }
+  }
+
+  // Token refused (socket) or 401 (sync): close everything and log out once.
+  void _onSessionExpired() {
+    if (!mounted || _expiring) return;
+    _expiring = true;
+    _closeSheet(_qrRoute);
+    _closeSheet(_receiptRoute);
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    // The root ScaffoldMessenger (MaterialApp) keeps it visible on AuthScreen.
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Your session expired. Please log in again.')));
+    context.read<AuthProvider>().logout();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = context.watch<ThemeProvider>().isDark;
-    return Scaffold(
-      extendBody: true,
-      backgroundColor: isDark ? AppColors.bg : AppColors.bgLight,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 280),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: KeyedSubtree(
-          key: ValueKey(_index),
-          child: _screens[_index],
+    return ChangeNotifierProvider<RealtimeService>.value(
+      value: _realtime,
+      child: Scaffold(
+        extendBody: true,
+        backgroundColor: isDark ? AppColors.bg : AppColors.bgLight,
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: KeyedSubtree(
+            key: ValueKey(_index),
+            child: _screens[_index],
+          ),
         ),
-      ),
-      bottomNavigationBar: NexusBottomNav(
-        currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
-        onQrTap: _showQrModal,
+        bottomNavigationBar: NexusBottomNav(
+          currentIndex: _index,
+          onTap: (i) => setState(() => _index = i),
+          onQrTap: _showQrModal,
+        ),
       ),
     );
   }

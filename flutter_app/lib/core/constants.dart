@@ -7,6 +7,11 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'https://nexus-backend-e0di.onrender.com/api',
   );
+
+  /// Socket.IO server (live receipts): the same host as [baseUrl], without /api.
+  static String get socketUrl => baseUrl.endsWith('/api')
+      ? baseUrl.substring(0, baseUrl.length - '/api'.length)
+      : baseUrl;
 }
 
 class AppColors {

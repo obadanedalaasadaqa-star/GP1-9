@@ -7,4 +7,10 @@ void main() {
     expect(AppConfig.baseUrl, startsWith('https://'));
     expect(AppConfig.baseUrl, endsWith('/api'));
   });
+
+  test('socketUrl uses HTTPS and has no /api', () {
+    expect(AppConfig.socketUrl, startsWith('https://'));
+    expect(AppConfig.socketUrl, isNot(endsWith('/api')));
+    expect(AppConfig.socketUrl, isNot(endsWith('/')));
+  });
 }
