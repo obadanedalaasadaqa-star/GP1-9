@@ -87,6 +87,13 @@ async function ensureSchema() {
     END $$;
   `);
   console.log('   DB: nexus_stores table ready');
+
+  // Every stats/archive query filters receipts by user and date range.
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS nexus_receipts_user_created_idx
+      ON nexus_receipts ("userId", "createdAt" DESC);
+  `);
+  console.log('   DB: nexus_receipts (userId, createdAt) index ready');
 }
 
 module.exports = { ensureSchema };

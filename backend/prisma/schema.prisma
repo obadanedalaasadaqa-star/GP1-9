@@ -72,5 +72,6 @@ model Receipt {
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   store Store? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
+  @@index([userId, createdAt(sort: Desc)], map: "nexus_receipts_user_created_idx")
   @@map("nexus_receipts")
 }

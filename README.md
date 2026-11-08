@@ -178,10 +178,15 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | GET | `/api/user/me` | Get current user profile |
 | PATCH | `/api/user/me` | Update display name |
 | GET | `/api/user/receipts` | Get last 50 receipts |
+| GET | `/api/user/stats?bounds=…` | Spending totals per period, category and store (Trends) |
 | POST | `/api/receipts` | Create a new receipt |
 | POST | `/api/receipts/seed` | Seed demo receipts (idempotent) |
 | GET | `/api/store/me` | Store login: check a store key |
 | POST | `/api/store/receipts` | Store sends a receipt to a customer serial |
+
+`/api/user/stats` takes `bounds`: 2 to 13 comma-separated ISO instants with a
+time zone (e.g. `2026-10-31T21:00:00.000Z`), oldest first. Each neighbour pair
+is one period, from inclusive and to exclusive (the same rule as `?from&to`).
 
 `/api/user/*` and `/api/receipts*` require an `Authorization: Bearer <token>`
 header. `/api/store/*` requires an `X-Store-Key: nxs_sk_…` header instead.
