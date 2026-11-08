@@ -39,10 +39,10 @@ class NexusBottomNav extends StatelessWidget {
           _NavItem(index: 1, icon: Icons.receipt_long_rounded, label: 'Archive',
             currentIndex: currentIndex, onTap: onTap),
           _CenterButton(onTap: onQrTap),
-          _NavItem(index: 2, icon: Icons.person_rounded, label: 'Profile',
+          _NavItem(index: 2, icon: Icons.insights_rounded, label: 'Trends',
             currentIndex: currentIndex, onTap: onTap),
-          // Ghost item for visual balance
-          const SizedBox(width: 48),
+          _NavItem(index: 3, icon: Icons.person_rounded, label: 'Profile',
+            currentIndex: currentIndex, onTap: onTap),
         ],
       ),
     );

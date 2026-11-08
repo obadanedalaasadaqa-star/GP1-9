@@ -28,14 +28,6 @@ class NewReceiptSheet extends StatefulWidget {
 }
 
 class _NewReceiptSheetState extends State<NewReceiptSheet> {
-  static const _categoryColors = {
-    'Supermarket': AppColors.blue,
-    'Food':        AppColors.mint,
-    'Pharmacy':    AppColors.violet,
-    'Clothing':    AppColors.gold,
-    'Electronics': AppColors.blueLight,
-  };
-
   @override
   void initState() {
     super.initState();
@@ -51,7 +43,7 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
 
     final r = widget.receipt;
-    final catColor = _categoryColors[r.category] ?? AppColors.gold;
+    final catColor = CategoryColors.map[r.category] ?? AppColors.gold;
     final shown = r.items.take(NewReceiptSheet.maxItems).toList();
     final more = r.items.length - shown.length;
 

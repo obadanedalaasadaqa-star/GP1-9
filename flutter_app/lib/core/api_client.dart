@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'constants.dart';
 import 'offline_cache.dart';
 import 'receipt_model.dart';
+import 'stats_model.dart';
 import 'user_model.dart';
 
 const _kTimeout = Duration(seconds: 15);
@@ -12,6 +13,9 @@ const _kUnreachable = "Can't reach the Nexus server. Check your connection and t
 /// Receipts plus where they came from. [offline]: the server couldn't be
 /// reached, so these are the copies saved on the phone (from [savedAt]).
 typedef ReceiptsResult = ({List<Receipt> receipts, bool offline, DateTime? savedAt});
+
+/// Trends stats plus where they came from (same rules as [ReceiptsResult]).
+typedef StatsResult = ({SpendingStats stats, bool offline, DateTime? savedAt});
 
 class ApiException implements Exception {
   final String message;
@@ -269,6 +273,54 @@ class ApiClient {
     final cached = await OfflineCache.loadReceipts(from: from, to: to);
     if (cached == null) throw ApiException(_kUnreachable);
     return (receipts: cached, offline: true, savedAt: await OfflineCache.savedAt());
+  }
+
+  // ── Stats (Trends) ─────────────────────────────────────────────
+  /// Spending totals for each period between neighbouring [bounds]
+  /// ([from, to), the same rule as [getReceipts]).
+  static Future<SpendingStats> getStats(List<DateTime> bounds) async {
+    final uri = Uri.parse('${AppConfig.baseUrl}/user/stats').replace(
+      queryParameters: {
+        'bounds': bounds.map((b) => b.toUtc().toIso8601String()).join(','),
+      },
+    );
+    final res = await http
+        .get(
+          uri,
+          headers: await _headers(auth: true),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    return SpendingStats.fromJson(_parse(res));
+  }
+
+  /// [getStats] that saves what it gets on the phone, and falls back to the
+  /// saved stats when the server can't be reached. A real answer from our
+  /// server (401, 400, ...) is still thrown, never hidden by the cache.
+  static Future<StatsResult> loadStats(List<DateTime> bounds) async {
+    try {
+      final stats = await getStats(bounds);
+      try {
+        await OfflineCache.saveStats(stats);
+      } catch (_) {
+        // Saving is best effort: the fresh stats are still shown.
+      }
+      return (stats: stats, offline: false, savedAt: null);
+    } on ApiException catch (e) {
+      if (e.fromServer) rethrow;
+      return _statsFromCache();
+    } catch (_) {
+      // No internet, DNS failure, connection reset, ...
+      return _statsFromCache();
+    }
+  }
+
+  static Future<StatsResult> _statsFromCache() async {
+    final cached = await OfflineCache.loadStats();
+    if (cached == null) throw ApiException(_kUnreachable);
+    return (stats: cached, offline: true, savedAt: await OfflineCache.statsSavedAt());
   }
 
 }

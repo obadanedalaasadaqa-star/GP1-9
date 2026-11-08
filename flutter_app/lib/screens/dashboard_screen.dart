@@ -25,14 +25,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
   int _requestId = 0; // ignores responses older than the latest load
 
-  static const _categoryColors = {
-    'Supermarket': AppColors.blue,
-    'Food':        AppColors.mint,
-    'Pharmacy':    AppColors.violet,
-    'Clothing':    AppColors.gold,
-    'Electronics': AppColors.blueLight,
-  };
-
   @override
   void initState() {
     super.initState();
@@ -274,7 +266,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   else
                     ..._todayReceipts.map((r) => _CompactReceiptTile(
                       receipt: r,
-                      catColor: _categoryColors[r.category] ?? AppColors.textMuted,
+                      catColor: CategoryColors.of(r.category),
                       surface: surface,
                       border: border,
                       textPrimary: textPrimary,
@@ -297,7 +289,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   else
                     ..._recentReceipts.map((r) => _CompactReceiptTile(
                       receipt: r,
-                      catColor: _categoryColors[r.category] ?? AppColors.textMuted,
+                      catColor: CategoryColors.of(r.category),
                       surface: surface,
                       border: border,
                       textPrimary: textPrimary,

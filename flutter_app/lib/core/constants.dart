@@ -50,3 +50,17 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 }
+
+/// Colour for each receipt category, shared by every screen.
+class CategoryColors {
+  static const map = {
+    'Supermarket': AppColors.blue,
+    'Food':        AppColors.mint,
+    'Pharmacy':    AppColors.violet,
+    'Clothing':    AppColors.gold,
+    'Electronics': AppColors.blueLight,
+  };
+
+  /// Colour for [category], muted for unknown ones.
+  static Color of(String category) => map[category] ?? AppColors.textMuted;
+}
