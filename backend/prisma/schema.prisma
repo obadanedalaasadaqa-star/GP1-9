@@ -66,6 +66,7 @@ model Receipt {
   category    String
   totalAmount Float
   items       Json
+  lineItems   Json?
   pointsEarned Int     @default(0)
   createdAt   DateTime @default(now())
 
