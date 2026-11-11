@@ -10,7 +10,8 @@ class OfflineBanner extends StatelessWidget {
   final String what;
   const OfflineBanner({super.key, this.savedAt, this.what = 'receipts'});
 
-  static String _ago(DateTime t) {
+  /// "just now", "5 min ago", "2 h ago" or "3 d ago".
+  static String ago(DateTime t) {
     final d = DateTime.now().difference(t);
     if (d.inMinutes < 1) return 'just now';
     if (d.inHours < 1) return '${d.inMinutes} min ago';
@@ -20,7 +21,7 @@ class OfflineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final when = savedAt == null ? '' : ' · updated ${_ago(savedAt!)}';
+    final when = savedAt == null ? '' : ' · updated ${ago(savedAt!)}';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

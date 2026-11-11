@@ -13,6 +13,9 @@ import 'package:nexus_app/screens/dashboard_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// The Home AI teaser asks for the insight; answer "not enough data".
+const _notEnoughData = '{"status":"not_enough_data","receiptCount":0,"minReceipts":3}';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   GoogleFonts.config.allowRuntimeFetching = false;
@@ -40,8 +43,9 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final client = MockClient((req) async =>
-        http.Response(jsonEncode(receipts.map((r) => r.toJson()).toList()), 200));
+    final client = MockClient((req) async => req.url.path.endsWith('/ai/insight')
+        ? http.Response(_notEnoughData, 200)
+        : http.Response(jsonEncode(receipts.map((r) => r.toJson()).toList()), 200));
 
     await http.runWithClient(() async {
       // No saved token: startup finishes without a network call; then sign the user in.
@@ -73,8 +77,9 @@ void main() {
     tester.view.physicalSize = const Size(600, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final client = MockClient((req) async =>
-        http.Response(jsonEncode(receipts.map((r) => r.toJson()).toList()), 200));
+    final client = MockClient((req) async => req.url.path.endsWith('/ai/insight')
+        ? http.Response(_notEnoughData, 200)
+        : http.Response(jsonEncode(receipts.map((r) => r.toJson()).toList()), 200));
     await http.runWithClient(() async {
       final auth = AuthProvider();
       for (var i = 0; i < 20 && auth.loading; i++) {
