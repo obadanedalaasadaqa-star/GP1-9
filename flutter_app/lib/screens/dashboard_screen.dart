@@ -9,7 +9,9 @@ import '../core/money.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
+import '../widgets/insight_card.dart';
 import '../widgets/offline_banner.dart';
+import 'ai_screen.dart';
 import 'receipt_detail_screen.dart';
 import 'verify_email_screen.dart';
 
@@ -26,6 +28,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _savedAt;
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
   int _requestId = 0; // ignores responses older than the latest load
+  final _insightKey = GlobalKey<InsightCardState>();
 
   @override
   void initState() {
@@ -64,6 +67,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted && id == _requestId) setState(() => _loading = false);
     }
   }
+
+  // Pull to refresh: the receipts and the AI teaser. Not from _load, which is
+  // also the refreshTick listener (the card listens itself).
+  Future<void> _refreshAll() => Future.wait([
+        _load(),
+        _insightKey.currentState?.reload() ?? Future<void>.value(),
+      ]);
 
   // Month totals
   double get _monthTotal {
@@ -136,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: RefreshIndicator(
             color: AppColors.gold,
             backgroundColor: surface,
-            onRefresh: _load,
+            onRefresh: _refreshAll,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
@@ -251,6 +261,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     textMuted: textMuted,
                     isDark: isDark,
                     loading: _loading,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── AI insight teaser ─────────────────────────────────────
+                  InsightCard(
+                    key: _insightKey,
+                    compact: true,
+                    onOpen: () => AiScreen.open(context),
                   ),
                   const SizedBox(height: 24),
 

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'core/ai_chat_session.dart';
 import 'core/api_client.dart';
 import 'core/auth_provider.dart';
 import 'core/constants.dart';
@@ -421,6 +422,9 @@ class _MainShellState extends State<_MainShell> {
   late final RealtimeService _realtime;
   final List<StreamSubscription<void>> _subs = [];
 
+  // Ask AI chat for this login session (in memory only, gone after logout).
+  late final AiChatSession _chat = AiChatSession();
+
   // Open sheets, kept as routes so exactly that sheet can be closed later.
   ModalBottomSheetRoute<void>? _qrRoute;
   ModalBottomSheetRoute<void>? _receiptRoute;
@@ -455,6 +459,7 @@ class _MainShellState extends State<_MainShell> {
       sub.cancel();
     }
     _realtime.dispose();
+    _chat.dispose();
     super.dispose();
   }
 
@@ -560,8 +565,11 @@ class _MainShellState extends State<_MainShell> {
   @override
   Widget build(BuildContext context) {
     final isDark = context.watch<ThemeProvider>().isDark;
-    return ChangeNotifierProvider<RealtimeService>.value(
-      value: _realtime,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<RealtimeService>.value(value: _realtime),
+        ChangeNotifierProvider<AiChatSession>.value(value: _chat),
+      ],
       child: Scaffold(
         extendBody: true,
         backgroundColor: isDark ? AppColors.bg : AppColors.bgLight,

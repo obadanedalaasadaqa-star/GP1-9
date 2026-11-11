@@ -45,6 +45,9 @@ Map<String, dynamic> statsJson(List<DateTime> bounds,
 Future<http.Response> Function(http.Request) online(
         {double current = 110, bool empty = false}) =>
     (req) async {
+      if (req.url.path.endsWith('/ai/insight')) {
+        return http.Response('{"status":"not_enough_data","receiptCount":0,"minReceipts":3}', 200);
+      }
       final bounds = req.url.queryParameters['bounds']!.split(',').map(DateTime.parse).toList();
       return http.Response(jsonEncode(statsJson(bounds, current: current, empty: empty)), 200);
     };

@@ -11,6 +11,7 @@ import '../core/stats_model.dart';
 import '../core/theme_provider.dart';
 import '../core/trends.dart';
 import '../widgets/offline_banner.dart';
+import 'ai_screen.dart';
 
 /// Trends tab: this month vs last month, the last 6 months, categories,
 /// biggest store and average receipt. Uses the same month periods as the
@@ -146,20 +147,43 @@ class _TrendsScreenState extends State<TrendsScreen> {
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 28, fontWeight: FontWeight.w800,
                 color: textPrimary, letterSpacing: -0.5)),
-            // Refresh button
-            GestureDetector(
-              onTap: _load,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.gold.withValues(alpha: 0.3)),
+            Row(
+              children: [
+                // AI page
+                Tooltip(
+                  message: 'AI insights',
+                  child: GestureDetector(
+                    onTap: () => AiScreen.open(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.gold.withValues(alpha: 0.3)),
+                      ),
+                      child: const Icon(Icons.auto_awesome_rounded,
+                        color: AppColors.gold, size: 18),
+                    ),
+                  ),
                 ),
-                child: const Icon(Icons.refresh_rounded,
-                  color: AppColors.gold, size: 18),
-              ),
+                const SizedBox(width: 8),
+                // Refresh button
+                GestureDetector(
+                  onTap: _load,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppColors.gold.withValues(alpha: 0.3)),
+                    ),
+                    child: const Icon(Icons.refresh_rounded,
+                      color: AppColors.gold, size: 18),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

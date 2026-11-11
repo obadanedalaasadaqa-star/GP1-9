@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ai_models.dart';
 import 'constants.dart';
 import 'offline_cache.dart';
 import 'receipt_model.dart';
@@ -10,12 +11,30 @@ import 'user_model.dart';
 const _kTimeout = Duration(seconds: 15);
 const _kUnreachable = "Can't reach the Nexus server. Check your connection and try again.";
 
+// AI calls can take a while (the model thinks, the chat calls tools).
+const _kInsightTimeout = Duration(seconds: 40);
+const _kInsightSlow = 'The AI is taking a while. Try again in a moment.';
+const _kChatTimeout = Duration(seconds: 60);
+const _kChatSlow = 'The AI is taking a while. Try again.';
+const _kReportTimeout = Duration(seconds: 60);
+const _kReportSlow = 'The report is taking a while. Try again.';
+// The email may still arrive after a timeout, so don't invite a resend.
+const _kEmailSlow = 'Sending is taking a while. Check your inbox in a minute before trying again.';
+
 /// Receipts plus where they came from. [offline]: the server couldn't be
 /// reached, so these are the copies saved on the phone (from [savedAt]).
 typedef ReceiptsResult = ({List<Receipt> receipts, bool offline, DateTime? savedAt});
 
 /// Trends stats plus where they came from (same rules as [ReceiptsResult]).
 typedef StatsResult = ({SpendingStats stats, bool offline, DateTime? savedAt});
+
+/// The AI insight plus where it came from. [offline]: the server couldn't be
+/// reached. [stale]: the server was too slow (or failed), so the saved insight
+/// is shown. Both come with [savedAt].
+typedef InsightResult = ({Insight insight, bool offline, bool stale, DateTime? savedAt});
+
+/// A spending report plus where it came from (same rules as [ReceiptsResult]).
+typedef ReportResult = ({SpendingReport report, bool offline, DateTime? savedAt});
 
 class ApiException implements Exception {
   final String message;
@@ -323,4 +342,144 @@ class ApiClient {
     return (stats: cached, offline: true, savedAt: await OfflineCache.statsSavedAt());
   }
 
+  // ── AI insight ─────────────────────────────────────────────────
+  /// The AI summary + tip for the months between [bounds] (the same bounds as
+  /// Trends). A timeout throws ApiException 408 ("taking a while").
+  static Future<Insight> getInsight(List<DateTime> bounds,
+      {Duration timeout = _kInsightTimeout}) async {
+    final uri = Uri.parse('${AppConfig.baseUrl}/ai/insight').replace(
+      queryParameters: {
+        'bounds': bounds.map((b) => b.toUtc().toIso8601String()).join(','),
+      },
+    );
+    final res = await http
+        .get(uri, headers: await _headers(auth: true))
+        .timeout(timeout, onTimeout: () => throw ApiException(_kInsightSlow, statusCode: 408));
+    return Insight.fromJson(_parse(res));
+  }
+
+  /// [getInsight] that saves what it gets, and falls back to the saved
+  /// insight when the server can't be reached ([offline]) or is too slow
+  /// ([stale]). A JSON answer from our server (401, 502, ...) is still thrown.
+  static Future<InsightResult> loadInsight(List<DateTime> bounds,
+      {Duration timeout = _kInsightTimeout}) async {
+    try {
+      final insight = await getInsight(bounds, timeout: timeout);
+      try {
+        await OfflineCache.saveInsight(insight);
+      } catch (_) {
+        // Saving is best effort.
+      }
+      return (insight: insight, offline: false, stale: false, savedAt: null);
+    } on ApiException catch (e) {
+      if (e.fromServer) rethrow;
+      if (e.statusCode == 408) {
+        // Slow server, not offline: the saved insight, or the 408 itself.
+        final cached = await OfflineCache.loadInsight();
+        if (cached == null) rethrow;
+        return (insight: cached, offline: false, stale: true, savedAt: await OfflineCache.insightSavedAt());
+      }
+      return _insightFromCache();
+    } catch (_) {
+      return _insightFromCache();
+    }
+  }
+
+  static Future<InsightResult> _insightFromCache() async {
+    final cached = await OfflineCache.loadInsight();
+    if (cached == null) throw ApiException(_kUnreachable);
+    return (insight: cached, offline: true, stale: false, savedAt: await OfflineCache.insightSavedAt());
+  }
+
+  // ── Ask AI ─────────────────────────────────────────────────────
+  /// Ask a question about the user's own spending. [history]: earlier
+  /// completed turns, sent as plain text. No offline cache for chat.
+  static Future<({String answer, int? remainingToday})> askAi(
+      String question, List<ChatMessage> history,
+      {Duration timeout = _kChatTimeout}) async {
+    final http.Response res;
+    try {
+      res = await http
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/ai/chat'),
+            headers: await _headers(auth: true),
+            body: jsonEncode({
+              'question': question,
+              'history': history.map((m) => m.toHistoryJson()).toList(),
+              'tzOffsetMinutes': DateTime.now().timeZoneOffset.inMinutes,
+            }),
+          )
+          .timeout(timeout, onTimeout: () => throw ApiException(_kChatSlow, statusCode: 408));
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw ApiException(_kUnreachable);
+    }
+    final data = _parse(res);
+    return (
+      answer: data['answer'] as String,
+      remainingToday: (data['remainingToday'] as num?)?.toInt(),
+    );
+  }
+
+  // ── Reports ────────────────────────────────────────────────────
+  static Future<SpendingReport> getReport(ReportRequest r,
+      {Duration timeout = _kReportTimeout}) async {
+    final uri = Uri.parse('${AppConfig.baseUrl}/ai/report').replace(
+      queryParameters: r.toQuery(DateTime.now().timeZoneOffset.inMinutes),
+    );
+    final res = await http
+        .get(uri, headers: await _headers(auth: true))
+        .timeout(timeout, onTimeout: () => throw ApiException(_kReportSlow, statusCode: 408));
+    return SpendingReport.fromJson(_parse(res));
+  }
+
+  /// [getReport] that saves what it gets under the request's key, and falls
+  /// back to the saved report only when it is for the same period.
+  static Future<ReportResult> loadReport(ReportRequest r,
+      {Duration timeout = _kReportTimeout}) async {
+    try {
+      final report = await getReport(r, timeout: timeout);
+      try {
+        await OfflineCache.saveReport(r.cacheKey, report);
+      } catch (_) {
+        // Saving is best effort.
+      }
+      return (report: report, offline: false, savedAt: null);
+    } on ApiException catch (e) {
+      if (e.fromServer) rethrow;
+      return _reportFromCache(r);
+    } catch (_) {
+      return _reportFromCache(r);
+    }
+  }
+
+  static Future<ReportResult> _reportFromCache(ReportRequest r) async {
+    final cached = await OfflineCache.loadReport(r.cacheKey);
+    if (cached == null) throw ApiException(_kUnreachable);
+    return (report: cached, offline: true, savedAt: await OfflineCache.reportSavedAt());
+  }
+
+  /// How long [emailReport] waits: the report timeout, so a slow server
+  /// (cold start) is not mistaken for a failure and the email sent twice.
+  static const Duration emailReportTimeout = _kReportTimeout;
+
+  /// Email the report to the verified address. Returns the server's message.
+  static Future<String> emailReport(ReportRequest r, {Duration timeout = emailReportTimeout}) async {
+    final query = r.toQuery(DateTime.now().timeZoneOffset.inMinutes);
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/ai/report/email'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({
+            ...query,
+            'tzOffsetMinutes': int.parse(query['tzOffsetMinutes']!),
+          }),
+        )
+        .timeout(
+          timeout,
+          onTimeout: () => throw ApiException(_kEmailSlow),
+        );
+    return _parse(res)['message'] as String;
+  }
 }
