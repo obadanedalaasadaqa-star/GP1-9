@@ -6,7 +6,9 @@ const authRoutes     = require('./routes/auth');
 const userRoutes     = require('./routes/user');
 const receiptRoutes  = require('./routes/receipts');
 const storeRoutes    = require('./routes/store');
+const aiRoutes       = require('./routes/ai');
 const { makeLimiters } = require('./lib/rateLimit');
+const { getAiClient: realGetAiClient } = require('./lib/ai');
 
 // "trust proxy" from TRUST_PROXY (default 1 = one proxy hop, e.g. Render).
 // A number string becomes a number; anything else (e.g. "loopback") is passed as is.
@@ -21,10 +23,14 @@ function trustProxySetting() {
  * Build the Express app. Does not load .env, listen, or touch the DB schema,
  * so tests can create it with Supertest.
  * rateLimit: false = no limits, or per-limiter overrides (see lib/rateLimit.js).
+ * aiClient: undefined = the real Claude client (null without ANTHROPIC_API_KEY);
+ * tests pass a fake, or null for "not configured".
+ * aiCaps: overrides of the daily AI caps (see routes/ai.js DEFAULT_AI_CAPS).
  */
-function createApp({ rateLimit } = {}) {
+function createApp({ rateLimit, aiClient, aiCaps } = {}) {
   const app = express();
   const limiters = makeLimiters(rateLimit);
+  const getAiClient = aiClient === undefined ? realGetAiClient : () => aiClient;
 
   app.set('trust proxy', trustProxySetting());
   app.use(cors({ origin: '*' }));
@@ -34,6 +40,7 @@ function createApp({ rateLimit } = {}) {
   app.use('/api/user', userRoutes(limiters));
   app.use('/api/receipts', receiptRoutes);
   app.use('/api/store', storeRoutes(limiters));
+  app.use('/api/ai', aiRoutes(limiters, { getAiClient, caps: aiCaps }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'nexus-backend', version: '1.0.0' });

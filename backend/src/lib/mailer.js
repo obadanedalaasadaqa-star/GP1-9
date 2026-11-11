@@ -1,5 +1,7 @@
 const nodemailer = require('nodemailer');
 const { escapeHtml } = require('./html');
+const { formatAmount } = require('./aiFormat');
+const { localDateOf } = require('./aiDates');
 
 // Email providers, picked on every send (so tests can change the env):
 //   1. Brevo HTTPS API (BREVO_API_KEY + MAIL_FROM). Works on Render.
@@ -144,4 +146,83 @@ async function sendReceiptEmail(to, firstName, { storeName, items, totalAmount, 
   });
 }
 
-module.exports = { mailProvider, isMailConfigured, sendVerificationEmail, sendReceiptEmail };
+const AI_MISSING = 'The AI summary is not available for this report.';
+const REPORT_FOOTER = 'The numbers are calculated by Nexus from your receipts. The summary is written by AI.';
+
+// "New", "—" or "+12%" for the comparison line.
+function reportChange(c) {
+  if (c.changePercent === null) return c.isNew ? 'New' : '—';
+  return c.changePercent > 0 ? `+${c.changePercent}%` : `${c.changePercent}%`;
+}
+
+// Spending report (routes/ai.js buildReport). Every dynamic string is escaped.
+// tz: the user's offset in minutes, so receipt dates are their local dates.
+async function sendReportEmail(to, firstName, report, tz = 0) {
+  const { range, previous, totals, comparison, ai } = report;
+  const jd = (n) => `${formatAmount(n)} JD`;
+  const aiReady = ai?.status === 'ready';
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] Report for ${to}: ${range.label}, ${formatAmount(totals.total)} JD, AI ${ai?.status ?? 'none'}`);
+    return;
+  }
+
+  const day = (iso) => localDateOf(iso, tz);
+  const diff = `${comparison.difference > 0 ? '+' : ''}${jd(comparison.difference)}`;
+
+  // Plain-text version with the same content.
+  const textLines = [
+    `Hi ${firstName},`, '',
+    `Your Nexus spending report: ${range.label}`, '',
+    ...(aiReady ? [ai.headline, '', ai.narrative, ''] : [AI_MISSING, '']),
+    `Total: ${jd(totals.total)}`, `Receipts: ${totals.receipts}`, `Average receipt: ${jd(totals.average)}`, '',
+    `Compared with ${previous.label}: ${jd(comparison.previousTotal)} (${diff}, ${reportChange(comparison)})`, '',
+    'By category:',
+    ...report.byCategory.map((c) => `- ${c.category}: ${jd(c.total)} (${c.sharePercent}%, ${c.receipts} receipts)`),
+    '', 'By month:',
+    ...report.byMonth.map((m) => `- ${m.label}${m.partial ? ' (so far)' : ''}: ${jd(m.total)} (${m.receipts} receipts)`),
+    '', 'Top stores:',
+    ...report.topStores.map((s) => `- ${s.storeName}: ${jd(s.total)} (${s.receipts} receipts)`),
+    '', 'Biggest receipts:',
+    ...report.biggestReceipts.map((b) => `- ${day(b.date)} ${b.storeName} (${b.category}): ${jd(b.total)}`),
+    ...(aiReady ? ['', 'Tips:', ...ai.tips.map((t) => `- ${t}`)] : []),
+    '', REPORT_FOOTER,
+  ];
+
+  const muted = 'color:#8A9BB4;font-size:13px';
+  const h3 = (t) => `<h3 style="margin:20px 0 8px;color:#D6A046;font-size:15px">${escapeHtml(t)}</h3>`;
+  const rows = (items) => `<table style="width:100%;border-collapse:collapse;font-size:13px">${items.map(([a, b]) =>
+    `<tr><td style="padding:4px 0;color:#E8EEF7">${a}</td><td style="padding:4px 0;text-align:right;color:#E8EEF7">${b}</td></tr>`).join('')}</table>`;
+
+  const html = card(`
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p style="margin:0 0 4px">Your spending report</p>
+        <p style="${muted};margin-top:0">${escapeHtml(range.label)}</p>
+        ${aiReady
+    ? `<p style="font-size:17px;font-weight:bold;margin:16px 0 8px">${escapeHtml(ai.headline)}</p>
+        <p style="line-height:1.5">${escapeHtml(ai.narrative)}</p>`
+    : `<p style="${muted}">${escapeHtml(AI_MISSING)}</p>`}
+        <p style="font-size:26px;font-weight:bold;margin:16px 0 4px">${escapeHtml(jd(totals.total))}</p>
+        <p style="${muted};margin:0">${escapeHtml(totals.receipts)} receipts · average ${escapeHtml(jd(totals.average))}</p>
+        ${h3(`Compared with ${previous.label}`)}
+        <p style="margin:0">${escapeHtml(jd(comparison.previousTotal))} · ${escapeHtml(diff)} · ${escapeHtml(reportChange(comparison))}</p>
+        ${h3('By category')}
+        ${rows(report.byCategory.map((c) => [escapeHtml(c.category), `${escapeHtml(jd(c.total))} · ${escapeHtml(c.sharePercent)}%`]))}
+        ${h3('By month')}
+        ${rows(report.byMonth.map((m) => [`${escapeHtml(m.label)}${m.partial ? ' (so far)' : ''}`, escapeHtml(jd(m.total))]))}
+        ${h3('Top stores')}
+        ${rows(report.topStores.map((s) => [escapeHtml(s.storeName), escapeHtml(jd(s.total))]))}
+        ${h3('Biggest receipts')}
+        ${rows(report.biggestReceipts.map((b) => [`${escapeHtml(day(b.date))} · ${escapeHtml(b.storeName)} · ${escapeHtml(b.category)}`, escapeHtml(jd(b.total))]))}
+        ${aiReady ? `${h3('Tips')}<ul style="padding-left:18px;margin:0">${ai.tips.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
+        <p style="${muted};margin-top:24px">${escapeHtml(REPORT_FOOTER)}</p>`);
+
+  await sendMail({
+    to,
+    toName: firstName,
+    subject: `Your Nexus spending report: ${range.label}`,
+    text: textLines.join('\n'),
+    html,
+  });
+}
+
+module.exports = { mailProvider, isMailConfigured, sendVerificationEmail, sendReceiptEmail, sendReportEmail };

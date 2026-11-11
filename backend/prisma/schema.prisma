@@ -24,6 +24,9 @@ model User {
 
   receipts          Receipt[]
   verificationCodes VerificationCode[]
+  aiInsight         AiInsight?
+  aiUsage           AiUsage[]
+  aiReports         AiReport[]
 
   @@map("nexus_users")
 }
@@ -75,4 +78,54 @@ model Receipt {
 
   @@index([userId, createdAt(sort: Desc)], map: "nexus_receipts_user_created_idx")
   @@map("nexus_receipts")
+}
+
+// AI insight cache, one row per user. inputHash = hash of the numbers sent.
+model AiInsight {
+  userId       String   @id
+  inputHash    String
+  summary      String
+  tip          String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("nexus_ai_insights")
+}
+
+// Daily AI use per user (UTC day). count = requests that reached Claude (or emails sent).
+model AiUsage {
+  userId       String
+  day          DateTime @db.Date
+  kind         String
+  count        Int      @default(0)
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day, kind])
+  @@map("nexus_ai_usage")
+}
+
+// AI text of a spending report (numbers are never stored).
+model AiReport {
+  userId       String
+  rangeKey     String
+  inputHash    String
+  headline     String
+  narrative    String
+  tips         Json     @default("[]")
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, rangeKey])
+  @@map("nexus_ai_reports")
 }

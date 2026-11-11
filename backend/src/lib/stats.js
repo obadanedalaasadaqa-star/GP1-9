@@ -60,8 +60,10 @@ const byTotalThenName = (key) => (a, b) =>
  * { periods: [{ from, to, total, count, average, byCategory, topStore }] }.
  * rows: { idx (1-based), noCategory, noStore, category, storeName, total, count }.
  * Empty periods are filled with zeros, oldest first like `bounds`.
+ * allStores: also add `stores` (every store, same order as topStore) to each
+ * period. Used by the AI report; /stats never passes it.
  */
-function shapeStats(rows, bounds) {
+function shapeStats(rows, bounds, { allStores = false } = {}) {
   const periods = [];
   const stores = [];
   for (let i = 0; i < bounds.length - 1; i++) {
@@ -101,6 +103,7 @@ function shapeStats(rows, bounds) {
       b.total - a.total || b.count - a.count
       || (a.storeName < b.storeName ? -1 : a.storeName > b.storeName ? 1 : 0));
     period.topStore = stores[i][0] ?? null;
+    if (allStores) period.stores = stores[i];
   });
 
   return { periods };

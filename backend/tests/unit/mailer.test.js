@@ -136,3 +136,63 @@ describe('escaping', () => {
     expect(textContent).toContain('Hi <a href="x">win</a>,');
   });
 });
+
+describe('sendReportEmail', () => {
+  const report = (ai = {
+    status: 'ready', headline: 'You spent 287.99 JD.', narrative: 'Mostly <b>Electronics</b>.', tips: ['Plan ahead.'],
+  }) => ({
+    range: { period: '1m', from: '2026-11-01', to: '2026-11-11', label: '1 – 11 Nov 2026', days: 11 },
+    previous: { from: '2026-10-01', to: '2026-10-11', label: '1 – 11 Oct 2026' },
+    totals: { total: 287.99, receipts: 7, average: 41.141 },
+    comparison: { previousTotal: 0, previousReceipts: 0, difference: 287.99, changePercent: null, isNew: true },
+    byCategory: [{ category: 'Electronics', total: 89.99, receipts: 1, sharePercent: 31, previousTotal: 0 }],
+    byMonth: [{ month: '2026-11', label: 'November 2026', total: 287.99, receipts: 7, partial: true }],
+    topStores: [{ storeName: '<script>alert(1)</script>', total: 89.99, receipts: 1 }],
+    biggestReceipts: [{ date: '2026-11-03T09:12:00.000Z', storeName: 'iStore', category: 'Electronics', total: 89.99 }],
+    ai,
+  });
+
+  test('Brevo: one fetch, subject, amounts, everything escaped, text part', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendReportEmail('a@example.com', 'Sara', report());
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const { subject, htmlContent, textContent } = lastBrevoBody();
+    expect(subject).toBe('Your Nexus spending report: 1 – 11 Nov 2026');
+    expect(htmlContent).toContain('287.99 JD');
+    expect(htmlContent).toContain('41.14 JD');
+    expect(htmlContent).not.toContain('<script>');
+    expect(htmlContent).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(htmlContent).toContain('Mostly &lt;b&gt;Electronics&lt;/b&gt;.');
+    expect(htmlContent).not.toContain('<b>Electronics</b>');
+    expect(htmlContent).toContain('The summary is written by AI.');
+    expect(textContent).toContain('Mostly <b>Electronics</b>.');
+    expect(textContent).toContain('Compared with 1 – 11 Oct 2026: 0.00 JD (+287.99 JD, New)');
+  });
+
+  test('biggest receipts use the local date (Asia/Amman, 00:30 on 5 Nov)', async () => {
+    const mailer = loadMailer(BREVO);
+    const r = report();
+    r.biggestReceipts = [{ date: '2026-11-04T21:30:00.000Z', storeName: 'iStore', category: 'Electronics', total: 89.99 }];
+    await mailer.sendReportEmail('a@example.com', 'Sara', r, 180);
+    const { htmlContent, textContent } = lastBrevoBody();
+    expect(htmlContent).toContain('2026-11-05 · iStore');
+    expect(htmlContent).not.toContain('2026-11-04');
+    expect(textContent).toContain('- 2026-11-05 iStore (Electronics): 89.99 JD');
+  });
+
+  test('AI unavailable: the email says so', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendReportEmail('a@example.com', 'Sara', report({ status: 'unavailable', error: 'x' }));
+    const { htmlContent, textContent } = lastBrevoBody();
+    expect(htmlContent).toContain('The AI summary is not available for this report.');
+    expect(textContent).toContain('The AI summary is not available for this report.');
+  });
+
+  test('dev mode: no fetch, one [mail:dev] Report line', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendReportEmail('a@example.com', 'Sara', report());
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Report for a@example.com: 1 – 11 Nov 2026, 287.99 JD, AI ready');
+  });
+});

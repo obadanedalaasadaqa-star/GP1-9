@@ -88,6 +88,44 @@ receives each recipient's email address and first name, the verification
 codes and, for receipt copies, the store name, items and totals. Without
 Brevo, nothing leaves our server except through Gmail (local only).
 
+### AI (insight, Ask AI, reports)
+
+The AI page uses the Claude API (`src/lib/ai.js` is the only file that talks to it).
+
+| Set in `.env` | Meaning |
+|---|---|
+| `ANTHROPIC_API_KEY` | Key from console.anthropic.com. Empty: insight and Ask AI answer 503; reports still return every number, with "AI summary is not set up on this server." |
+| `AI_MODEL` (optional) | Default `claude-haiku-5-5`. `claude-sonnet-5-5` or `claude-opus-5-5` is a one-line switch. Saved AI texts are written again once (the cache key includes the model). |
+| `AI_FALLBACKS` (optional) | Default off. `on` sends the server-side fallback beta, and only with an Opus/Sonnet 5.5 model (Haiku 5.5 has no server-side fallback). |
+
+The startup log says what is active (`AI: claude-haiku-5-5 (fallbacks off)`).
+
+- **The server computes every number** with SQL; Claude only writes words around
+  them. A guard rejects any answer that states an amount or percentage the
+  server did not give it (insight/report: 502 or "AI unavailable"; Ask AI: one
+  repair turn, then an error).
+- **Insight cache:** one per user; reused while the numbers are unchanged and it
+  is under 24 h old, so a second request costs nothing. A new receipt changes
+  the numbers, so the next request writes a new one.
+- **Limits:** new insights 20/hour; Ask AI 10 per 10 min and 30/day; AI report
+  summaries 10/day (numbers are always free); report emails 3/hour and 5/day.
+  Daily counters (table `nexus_ai_usage`, with token counts) reset at 00:00 UTC.
+- **Cost (Haiku 5.5, $0.10 / $0.50 per 1M tokens):** about $0.0006 per insight,
+  $0.0012 per question and $0.0012 per report; 500 insights + 1,000 questions +
+  100 reports is about $1.60. Opus 5.5 is about 40 times that.
+- **Set a monthly spend limit in the Anthropic console.** The per-user caps
+  limit one user, not everyone.
+
+**Third-party data:** when `ANTHROPIC_API_KEY` is set, Anthropic (USA) receives:
+monthly and per-category spending totals, receipt counts, dates, store, category
+and item names from the user's receipts (names cut to 40 to 60 characters), and
+the questions the user types in Ask AI. Store, category and item names can be
+typed by the user on manually added receipts. No names, emails, phone numbers,
+serials or ids are sent. **Report emails** go through the same mail provider as
+verification codes (Brevo on Render, Gmail locally) and contain the report's
+totals, category and store names, and the date, store, category and total of
+the biggest receipts.
+
 ### Store Simulator (live receipts)
 
 The backend serves a cashier web page at `/store/`
@@ -183,12 +221,16 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | POST | `/api/receipts/seed` | Seed demo receipts (idempotent) |
 | GET | `/api/store/me` | Store login: check a store key |
 | POST | `/api/store/receipts` | Store sends a receipt to a customer serial |
+| GET | `/api/ai/insight?bounds=…` | AI summary + tip for this month (same bounds as stats; cached 24 h) |
+| POST | `/api/ai/chat` | Ask AI: `{ question, history?, tzOffsetMinutes? }` → `{ answer, toolsUsed, remainingToday }` |
+| GET | `/api/ai/report?period=…` | Spending report: `1m`, `3m`, `6m`, `1y` or `custom&from=YYYY-MM-DD&to=YYYY-MM-DD` |
+| POST | `/api/ai/report/email` | Email the report to the verified address |
 
 `/api/user/stats` takes `bounds`: 2 to 13 comma-separated ISO instants with a
 time zone (e.g. `2026-10-31T21:00:00.000Z`), oldest first. Each neighbour pair
 is one period, from inclusive and to exclusive (the same rule as `?from&to`).
 
-`/api/user/*` and `/api/receipts*` require an `Authorization: Bearer <token>`
+`/api/user/*`, `/api/receipts*` and `/api/ai/*` require an `Authorization: Bearer <token>`
 header. `/api/store/*` requires an `X-Store-Key: nxs_sk_…` header instead.
 
 Live updates: the app opens a Socket.IO connection to the server root with
@@ -199,5 +241,5 @@ Live updates: the app opens a Socket.IO connection to the server root with
 ## Tech Stack
 
 - **Mobile:** Flutter 3.11, Dart, Provider, http, shared_preferences, qr_flutter, google_fonts, socket_io_client
-- **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken, uuid, Socket.IO, Brevo (email), jsQR (Store Simulator)
+- **Backend:** Node.js, Express, Prisma ORM, bcryptjs, jsonwebtoken, uuid, Socket.IO, Brevo (email), jsQR (Store Simulator), Claude API (`@anthropic-ai/sdk`)
 - **Database:** Supabase (PostgreSQL)

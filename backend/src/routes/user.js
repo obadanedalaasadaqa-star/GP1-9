@@ -6,6 +6,7 @@ const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
 const { checkCode, sendEmailCode, resendWaitSeconds } = require('../lib/verification');
 const { parseBounds, shapeStats } = require('../lib/stats');
+const { queryStats } = require('../lib/spendingQueries');
 
 const SAFE_SELECT = {
   id: true,
@@ -232,30 +233,10 @@ module.exports = function userRoutes(limiters) {
     const parsed = parseBounds(req.query.bounds);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
     const { bounds } = parsed;
-    const isoStrings = bounds.map((d) => d.toISOString());
 
     try {
       // One round trip: period totals, per category and per store via GROUPING SETS.
-      const rows = await prisma.$queryRaw`
-        WITH b AS (
-          SELECT i, lo, LEAD(lo) OVER (ORDER BY i) AS hi
-            FROM unnest(${isoStrings}::timestamptz[]) WITH ORDINALITY AS t(lo, i)
-        )
-        SELECT b.i::int                      AS idx,
-               GROUPING(r.category)::int     AS "noCategory",
-               GROUPING(r."storeName")::int  AS "noStore",
-               r.category,
-               r."storeName",
-               SUM(r."totalAmount")::float8  AS total,
-               COUNT(*)::int                 AS count
-          FROM b
-          JOIN nexus_receipts r
-            ON r."userId" = ${req.userId}
-           AND r."createdAt" >= b.lo
-           AND r."createdAt" <  b.hi
-         WHERE b.hi IS NOT NULL
-         GROUP BY GROUPING SETS ((b.i), (b.i, r.category), (b.i, r."storeName"))
-      `;
+      const rows = await queryStats(req.userId, bounds);
       res.json(shapeStats(rows, bounds));
     } catch (err) {
       console.error('[user/stats]', err);

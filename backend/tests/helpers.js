@@ -9,8 +9,9 @@ const tracked = new Set();
 const trackedStores = new Set();
 
 // App without rate limits, so tests never trip each other's limits.
-function makeApp() {
-  return createApp({ rateLimit: false });
+// opts: extra createApp options (aiClient, aiCaps, or rateLimit overrides).
+function makeApp(opts = {}) {
+  return createApp({ rateLimit: false, ...opts });
 }
 
 // test_<time><random>@nexus.test — matched by the cleanup SQL in the README.
