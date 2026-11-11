@@ -23,6 +23,18 @@ const DEFAULT_LIMITS = {
                 error: 'Too many wrong store keys. Try again in a few minutes.' },
   storeReceipts: { windowMs: 1 * MIN, limit: 60, byStore: true,
                 error: 'Too many receipts from this store. Try again in a minute.' },
+  // aiInsight and aiChat only see requests that would call Claude (cache hits,
+  // 'not enough data', 'no receipts' and validation errors are answered first).
+  // aiReport counts every report request. Daily caps live in nexus_ai_usage and
+  // are taken after these limiters.
+  aiInsight:     { windowMs: 60 * MIN, limit: 20, byUser: true,
+                   error: 'Too many new insights. Try again later.' },
+  aiChat:        { windowMs: 10 * MIN, limit: 10, byUser: true,
+                   error: 'Too many questions. Wait a few minutes and try again.' },
+  aiReport:      { windowMs: 10 * MIN, limit: 30, byUser: true,
+                   error: 'Too many reports. Try again in a few minutes.' },
+  aiReportEmail: { windowMs: 60 * MIN, limit: 3,  byUser: true,
+                   error: 'Too many report emails. Try again later.' },
 };
 
 const passThrough = (_req, _res, next) => next();
@@ -51,7 +63,8 @@ function buildLimiter(name, {
 }
 
 /**
- * Returns { login, register, sendCode, verifyCode, storeAuth, storeReceipts } middlewares.
+ * Returns { login, register, sendCode, verifyCode, storeAuth, storeReceipts,
+ * aiInsight, aiChat, aiReport, aiReportEmail } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.
  */

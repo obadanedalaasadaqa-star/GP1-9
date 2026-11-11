@@ -140,3 +140,36 @@ describe('shapeStats', () => {
     expect(periods[2].count).toBe(0);
   });
 });
+
+describe('shapeStats allStores (AI report)', () => {
+  const bounds = months(3).map((s) => new Date(s)); // 2 periods
+  const totalRow = (idx, total, count) =>
+    ({ idx, noCategory: 1, noStore: 1, category: null, storeName: null, total, count });
+  const catRow = (idx, category, total, count) =>
+    ({ idx, noCategory: 0, noStore: 1, category, storeName: null, total, count });
+  const storeRow = (idx, storeName, total, count) =>
+    ({ idx, noCategory: 1, noStore: 0, category: null, storeName, total, count });
+  const rows = [
+    totalRow(1, 20, 3),
+    catRow(1, 'Food', 20, 3),
+    storeRow(1, 'A', 5, 1),
+    storeRow(1, 'B', 15, 2),
+  ];
+
+  test('without the option the output is exactly as before (no stores key)', () => {
+    const plain = shapeStats(rows, bounds);
+    expect(shapeStats(rows, bounds, {})).toEqual(plain);
+    expect(shapeStats(rows, bounds, { allStores: false })).toEqual(plain);
+    expect(plain.periods[0]).not.toHaveProperty('stores');
+  });
+
+  test('with allStores each period lists every store, same order as topStore', () => {
+    const { periods } = shapeStats(rows, bounds, { allStores: true });
+    expect(periods[0].stores).toEqual([
+      { storeName: 'B', total: 15, count: 2 },
+      { storeName: 'A', total: 5, count: 1 },
+    ]);
+    expect(periods[0].topStore).toEqual(periods[0].stores[0]);
+    expect(periods[1].stores).toEqual([]);
+  });
+});

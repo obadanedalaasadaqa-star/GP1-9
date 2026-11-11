@@ -18,3 +18,9 @@ delete process.env.GMAIL_USER;
 delete process.env.GMAIL_APP_PASSWORD;
 delete process.env.BREVO_API_KEY;
 delete process.env.MAIL_FROM;
+
+// Tests must never reach the real Claude API, and must not depend on a
+// developer's model choice in .env.
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.AI_MODEL;
+delete process.env.AI_FALLBACKS;

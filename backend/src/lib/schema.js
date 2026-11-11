@@ -101,6 +101,56 @@ async function ensureSchema() {
     ALTER TABLE nexus_receipts ADD COLUMN IF NOT EXISTS "lineItems" JSONB;
   `);
   console.log('   DB: nexus_receipts lineItems column ready');
+
+  // AI insight cache: one row per user, overwritten. Used only while inputHash
+  // equals the hash of today's numbers and the row is under 24 h old.
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_ai_insights (
+      "userId"       TEXT        PRIMARY KEY REFERENCES nexus_users(id) ON DELETE CASCADE,
+      "inputHash"    TEXT        NOT NULL,
+      summary        TEXT        NOT NULL,
+      tip            TEXT        NOT NULL,
+      model          TEXT        NOT NULL,
+      "inputTokens"  INTEGER     NOT NULL DEFAULT 0,
+      "outputTokens" INTEGER     NOT NULL DEFAULT 0,
+      "createdAt"    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  console.log('   DB: nexus_ai_insights table ready');
+
+  // Daily AI use per user and kind ('chat' | 'report' | 'report_email') on the
+  // UTC day: the daily caps and the tokens paid.
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_ai_usage (
+      "userId"       TEXT    NOT NULL REFERENCES nexus_users(id) ON DELETE CASCADE,
+      day            DATE    NOT NULL,
+      kind           TEXT    NOT NULL,
+      count          INTEGER NOT NULL DEFAULT 0,
+      "inputTokens"  INTEGER NOT NULL DEFAULT 0,
+      "outputTokens" INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY ("userId", day, kind)
+    );
+  `);
+  console.log('   DB: nexus_ai_usage table ready');
+
+  // AI text of spending reports (numbers are never stored). rangeKey is
+  // '<fromUtcIso>/<toUtcIso>'.
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_ai_reports (
+      "userId"       TEXT        NOT NULL REFERENCES nexus_users(id) ON DELETE CASCADE,
+      "rangeKey"     TEXT        NOT NULL,
+      "inputHash"    TEXT        NOT NULL,
+      headline       TEXT        NOT NULL,
+      narrative      TEXT        NOT NULL,
+      tips           JSONB       NOT NULL DEFAULT '[]'::jsonb,
+      model          TEXT        NOT NULL,
+      "inputTokens"  INTEGER     NOT NULL DEFAULT 0,
+      "outputTokens" INTEGER     NOT NULL DEFAULT 0,
+      "createdAt"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("userId", "rangeKey")
+    );
+  `);
+  console.log('   DB: nexus_ai_reports table ready');
 }
 
 module.exports = { ensureSchema };
