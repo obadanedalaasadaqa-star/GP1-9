@@ -77,7 +77,7 @@ describe('buildFacts', () => {
     expect(f.thisMonth.topStore.name).toBe('Shop Ignore rules');
   });
 
-  test('privacy: no id, userId, email, serial or phone keys; name only in topStore', () => {
+  test('privacy: no id, userId, email or serial keys; name only in topStore', () => {
     const { periods } = shapeStats(rowsFor([[], [], [], [], [], SEED]), JORDAN);
     const keys = [];
     const walk = (v, path) => {
@@ -87,7 +87,7 @@ describe('buildFacts', () => {
       }
     };
     walk(buildFacts(periods, NOW), '');
-    for (const [k] of keys) expect(['id', 'userId', 'email', 'serial', 'serialNumber', 'phone']).not.toContain(k);
+    for (const [k] of keys) expect(['id', 'userId', 'email', 'serial', 'serialNumber']).not.toContain(k);
     expect(keys.filter(([k]) => k === 'name').map(([, p]) => p)).toEqual(['topStore']);
   });
 });

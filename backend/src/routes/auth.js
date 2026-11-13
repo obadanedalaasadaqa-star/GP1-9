@@ -3,7 +3,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const prisma = require('../lib/prisma');
-const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
 const { sendEmailCode } = require('../lib/verification');
 
@@ -13,7 +12,6 @@ const SAFE_USER_SELECT = {
   name: true,
   firstName: true,
   lastName: true,
-  phone: true,
   emailVerified: true,
   serialNumber: true,
   loyaltyPoints: true,
@@ -41,14 +39,10 @@ module.exports = function authRoutes(limiters) {
     const firstName = req.body?.firstName?.trim();
     const lastName  = req.body?.lastName?.trim();
 
-    if (!email || !password || !firstName || !lastName || !req.body?.phone) {
+    if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({
-        error: 'First name, last name, phone, email, and password are required.',
+        error: 'First name, last name, email, and password are required.',
       });
-    }
-    const phone = normalizeJordanPhone(req.body.phone);
-    if (!phone) {
-      return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
     }
     const pwError = passwordError(password);
     if (pwError) return res.status(400).json({ error: pwError });
@@ -56,8 +50,6 @@ module.exports = function authRoutes(limiters) {
     try {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) return res.status(409).json({ error: 'Email already registered.' });
-      const phoneTaken = await prisma.user.findUnique({ where: { phone } });
-      if (phoneTaken) return res.status(409).json({ error: 'Phone number already registered.' });
 
       const hashed = await bcrypt.hash(password, 12);
       const serialNumber = generateSerial();
@@ -65,7 +57,7 @@ module.exports = function authRoutes(limiters) {
       const user = await prisma.user.create({
         data: {
           email, password: hashed, serialNumber,
-          firstName, lastName, phone,
+          firstName, lastName,
           name: `${firstName} ${lastName}`,
         },
         select: SAFE_USER_SELECT,

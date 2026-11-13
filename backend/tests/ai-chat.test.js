@@ -75,7 +75,7 @@ describe('POST /api/ai/chat', () => {
     ai.next(() => reply([text('Done.')]));
     await askQ(u.token, 'What did I buy?');
     const sent = JSON.stringify(ai.seen);
-    for (const bad of [u.email, u.user.serialNumber, u.user.phone, u.user.id, '"userId"']) {
+    for (const bad of [u.email, u.user.serialNumber, u.user.id, '"userId"']) {
       expect(sent).not.toContain(bad);
     }
     // Tool outputs have no id keys (the API's own tool_use ids are allowed).

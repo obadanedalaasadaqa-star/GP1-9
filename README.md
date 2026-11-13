@@ -120,7 +120,7 @@ The startup log says what is active (`AI: claude-haiku-5-5 (fallbacks off)`).
 monthly and per-category spending totals, receipt counts, dates, store, category
 and item names from the user's receipts (names cut to 40 to 60 characters), and
 the questions the user types in Ask AI. Store, category and item names can be
-typed by the user on manually added receipts. No names, emails, phone numbers,
+typed by the user on manually added receipts. No names, emails,
 serials or ids are sent. **Report emails** go through the same mail provider as
 verification codes (Brevo on Render, Gmail locally) and contain the report's
 totals, category and store names, and the date, store, category and total of

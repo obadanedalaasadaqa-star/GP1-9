@@ -61,11 +61,11 @@ describe('GET /api/ai/insight', () => {
     expect(facts.months.map((m) => m.total)).toEqual(stats.body.periods.map((p) => formatAmount(p.total)));
   }, SLOW);
 
-  test('I-3 privacy: no email, serial, phone or user id sent', async () => {
+  test('I-3 privacy: no email, serial or user id sent', async () => {
     const u = await seededUser(app);
     await getInsight(u.token);
     const sent = JSON.stringify(ai.seen);
-    for (const bad of [u.email, u.user.serialNumber, u.user.phone, u.user.id, 'Test User']) {
+    for (const bad of [u.email, u.user.serialNumber, u.user.id, 'Test User']) {
       expect(sent).not.toContain(bad);
     }
   }, SLOW);

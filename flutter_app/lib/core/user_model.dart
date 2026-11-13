@@ -4,7 +4,6 @@ class User {
   final String name;
   final String firstName;
   final String lastName;
-  final String? phone;
   final bool emailVerified;
   final String serialNumber;
   final int loyaltyPoints;
@@ -22,7 +21,6 @@ class User {
     required this.name,
     required this.firstName,
     required this.lastName,
-    this.phone,
     this.emailVerified = false,
     required this.serialNumber,
     required this.loyaltyPoints,
@@ -41,7 +39,6 @@ class User {
       name: name,
       firstName: j['firstName'] as String? ?? parts.first,
       lastName: j['lastName'] as String? ?? parts.skip(1).join(' '),
-      phone: j['phone'] as String?,
       emailVerified: j['emailVerified'] as bool? ?? false,
       serialNumber: j['serialNumber'] as String,
       loyaltyPoints: (j['loyaltyPoints'] as num).toInt(),
@@ -58,7 +55,6 @@ class User {
     'name': name,
     'firstName': firstName,
     'lastName': lastName,
-    'phone': phone,
     'emailVerified': emailVerified,
     'serialNumber': serialNumber,
     'loyaltyPoints': loyaltyPoints,
@@ -71,7 +67,6 @@ class User {
     String? name,
     String? firstName,
     String? lastName,
-    String? phone,
     bool? emailVerified,
     int? loyaltyPoints,
     bool? budgetAlertEmails,
@@ -83,7 +78,6 @@ class User {
         name: name ?? this.name,
         firstName: firstName ?? this.firstName,
         lastName: lastName ?? this.lastName,
-        phone: phone ?? this.phone,
         emailVerified: emailVerified ?? this.emailVerified,
         serialNumber: serialNumber,
         loyaltyPoints: loyaltyPoints ?? this.loyaltyPoints,

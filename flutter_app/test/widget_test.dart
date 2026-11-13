@@ -146,7 +146,7 @@ void main() {
       expect(pattern.hasMatch(user.serialNumber), isTrue);
     });
 
-    test('parses firstName, lastName, and phone', () {
+    test('parses firstName and lastName; an old cached phone is ignored', () {
       final json = {
         'id': 'user-123',
         'email': 'noor@gmail.com',
@@ -161,7 +161,7 @@ void main() {
       final user = User.fromJson(json);
       expect(user.firstName, 'Noor');
       expect(user.lastName, 'Assaf');
-      expect(user.phone, '+962791234567');
+      expect(user.toJson().containsKey('phone'), isFalse);
     });
 
     test('falls back to splitting name when firstName/lastName are missing', () {
@@ -176,7 +176,6 @@ void main() {
       final user = User.fromJson(json);
       expect(user.firstName, 'Noor');
       expect(user.lastName, 'Al Assaf');
-      expect(user.phone, isNull);
     });
 
     test('emailVerified parsed, defaults to false when missing', () {
@@ -190,24 +189,6 @@ void main() {
       };
       expect(User.fromJson({...base, 'emailVerified': true}).emailVerified, isTrue);
       expect(User.fromJson(base).emailVerified, isFalse);
-    });
-  });
-
-  // ─── isValidJordanPhone ─────────────────────────────────────────────────────
-
-  group('isValidJordanPhone', () {
-    test('accepts local and international formats', () {
-      expect(isValidJordanPhone('0791234567'), isTrue);
-      expect(isValidJordanPhone('078 123 4567'), isTrue);
-      expect(isValidJordanPhone('+962771234567'), isTrue);
-      expect(isValidJordanPhone('00962791234567'), isTrue);
-    });
-
-    test('rejects wrong prefixes and lengths (phone)', () {
-      expect(isValidJordanPhone('0761234567'), isFalse);
-      expect(isValidJordanPhone('079123456'), isFalse);
-      expect(isValidJordanPhone('07912345678'), isFalse);
-      expect(isValidJordanPhone('abc'), isFalse);
     });
   });
 
