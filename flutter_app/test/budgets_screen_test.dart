@@ -209,5 +209,13 @@ void main() {
     expect(budgetAmountError('1.234'), 'Use at most 2 decimals.');
     expect(budgetAmountError('0.99'), 'Enter an amount between 1 and 100000 JD.');
     expect(budgetAmountError('100001'), 'Enter an amount between 1 and 100000 JD.');
+    // Comma-decimal keypads and Arabic digits.
+    expect(budgetAmountError('12,5'), isNull);
+    expect(budgetAmountError('12,50'), isNull);
+    expect(budgetAmountError('١٢٫٥'), isNull);
+    expect(budgetAmountError('1,234'), 'Use at most 2 decimals.');
+    expect(normalizeBudgetAmount(' 12,5 '), '12.5');
+    expect(normalizeBudgetAmount('١٢٫٥٠'), '12.50');
+    expect(normalizeBudgetAmount('۲۰'), '20');
   });
 }

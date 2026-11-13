@@ -263,10 +263,30 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   );
 }
 
+/// The typed amount with a decimal comma ("12,5", what the iPhone keypad
+/// types in comma locales) or the Arabic decimal sign "٫" turned into ".",
+/// and Arabic-Indic / Persian digits turned into 0-9. Amounts never have
+/// thousands separators here, so a comma is always the decimal point.
+String normalizeBudgetAmount(String raw) {
+  final b = StringBuffer();
+  for (final r in raw.trim().runes) {
+    if (r >= 0x0660 && r <= 0x0669) {
+      b.writeCharCode(0x30 + r - 0x0660); // ٠-٩
+    } else if (r >= 0x06F0 && r <= 0x06F9) {
+      b.writeCharCode(0x30 + r - 0x06F0); // ۰-۹
+    } else if (r == 0x2C || r == 0x066B) {
+      b.write('.');                       // , and ٫
+    } else {
+      b.writeCharCode(r);
+    }
+  }
+  return b.toString();
+}
+
 /// Amount typed in the app: 1 to 100000 JD with at most 2 decimals.
 /// Returns the error text, or null when valid.
 String? budgetAmountError(String raw) {
-  final s = raw.trim();
+  final s = normalizeBudgetAmount(raw);
   if (s.isEmpty) return 'Enter an amount.';
   if (!RegExp(r'^\d+(\.\d+)?$').hasMatch(s)) return 'Enter a number, like 50 or 12.50.';
   if (RegExp(r'\.\d{3,}$').hasMatch(s)) return 'Use at most 2 decimals.';
@@ -344,7 +364,7 @@ class _BudgetEditSheetState extends State<BudgetEditSheet> {
       setState(() => _error = problem);
       return;
     }
-    final limit = double.parse(_amount.text.trim());
+    final limit = double.parse(normalizeBudgetAmount(_amount.text));
     _run(() => ApiClient.saveBudget(category, limit));
   }
 

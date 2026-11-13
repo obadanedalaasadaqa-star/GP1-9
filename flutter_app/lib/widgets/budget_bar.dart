@@ -33,7 +33,6 @@ class BudgetBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark      = context.watch<ThemeProvider>().isDark;
-    final border      = isDark ? AppColors.border : AppColors.borderLight;
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
     final textMuted   = isDark ? AppColors.textMuted : AppColors.textMutedLight;
     final color = colorFor(status);
@@ -65,11 +64,21 @@ class BudgetBar extends StatelessWidget {
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
+            // Full width on purpose: the Column gives loose width, so without
+            // it the Stack took the fill's width and the empty track never
+            // showed (a 0% bar was invisible, a 91% bar had no grey end).
             child: SizedBox(
               height: 8,
+              width: double.infinity,
               child: Stack(
                 children: [
-                  Positioned.fill(child: ColoredBox(color: border)),
+                  // The empty track. The border colour was used before, but
+                  // on the card surface it was invisible (a 0% bar showed
+                  // nothing at all).
+                  Positioned.fill(
+                    child: ColoredBox(
+                      key: const ValueKey('budget-bar-track'),
+                      color: textMuted.withValues(alpha: 0.22))),
                   FractionallySizedBox(
                     key: const ValueKey('budget-bar-fill'),
                     widthFactor: fillOf(status),
