@@ -191,34 +191,6 @@ void main() {
       expect(User.fromJson({...base, 'emailVerified': true}).emailVerified, isTrue);
       expect(User.fromJson(base).emailVerified, isFalse);
     });
-
-    test('phoneVerified parsed, defaults to false when missing', () {
-      final base = {
-        'id': 'user-123',
-        'email': 'noor@gmail.com',
-        'name': 'Noor Assaf',
-        'serialNumber': 'NXS-442F8-AA1CC',
-        'loyaltyPoints': 0,
-        'createdAt': '2026-05-16T18:52:45.546Z',
-      };
-      expect(User.fromJson({...base, 'phoneVerified': true}).phoneVerified, isTrue);
-      expect(User.fromJson(base).phoneVerified, isFalse);
-    });
-
-    test('phoneVerified survives toJson and copyWith', () {
-      final user = User.fromJson({
-        'id': 'user-123',
-        'email': 'noor@gmail.com',
-        'name': 'Noor Assaf',
-        'serialNumber': 'NXS-442F8-AA1CC',
-        'loyaltyPoints': 0,
-        'createdAt': '2026-05-16T18:52:45.546Z',
-        'phoneVerified': true,
-      });
-      expect(User.fromJson(user.toJson()).phoneVerified, isTrue);
-      expect(user.copyWith(name: 'Noor').phoneVerified, isTrue);
-      expect(user.copyWith(phoneVerified: false).phoneVerified, isFalse);
-    });
   });
 
   // ─── isValidJordanPhone ─────────────────────────────────────────────────────

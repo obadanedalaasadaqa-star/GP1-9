@@ -1,4 +1,4 @@
-const { normalizeJordanPhone, maskPhone } = require('../../src/lib/phone');
+const { normalizeJordanPhone } = require('../../src/lib/phone');
 
 describe('normalizeJordanPhone', () => {
   test.each([
@@ -32,26 +32,5 @@ describe('normalizeJordanPhone', () => {
   test('rejects non-strings', () => {
     expect(normalizeJordanPhone(791234567)).toBeNull();
     expect(normalizeJordanPhone(null)).toBeNull();
-  });
-});
-
-describe('maskPhone', () => {
-  test('keeps the prefix and the last 4 digits', () => {
-    expect(maskPhone('+962791234567')).toBe('079 *** 4567');
-  });
-
-  test('accepts any format normalizeJordanPhone accepts', () => {
-    expect(maskPhone('0781234567')).toBe('078 *** 4567');
-    expect(maskPhone('00962 77 123 4567')).toBe('077 *** 4567');
-  });
-
-  test('never shows the middle digits', () => {
-    expect(maskPhone('+962791234567')).not.toMatch(/123/);
-  });
-
-  test('null for anything invalid', () => {
-    expect(maskPhone('12345')).toBeNull();
-    expect(maskPhone(null)).toBeNull();
-    expect(maskPhone(undefined)).toBeNull();
   });
 });

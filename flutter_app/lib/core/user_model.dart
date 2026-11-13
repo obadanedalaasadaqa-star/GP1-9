@@ -6,9 +6,6 @@ class User {
   final String lastName;
   final String? phone;
   final bool emailVerified;
-
-  /// The phone number was confirmed with an SMS code.
-  final bool phoneVerified;
   final String serialNumber;
   final int loyaltyPoints;
   final DateTime createdAt;
@@ -27,7 +24,6 @@ class User {
     required this.lastName,
     this.phone,
     this.emailVerified = false,
-    this.phoneVerified = false,
     required this.serialNumber,
     required this.loyaltyPoints,
     required this.createdAt,
@@ -47,7 +43,6 @@ class User {
       lastName: j['lastName'] as String? ?? parts.skip(1).join(' '),
       phone: j['phone'] as String?,
       emailVerified: j['emailVerified'] as bool? ?? false,
-      phoneVerified: j['phoneVerified'] as bool? ?? false,
       serialNumber: j['serialNumber'] as String,
       loyaltyPoints: (j['loyaltyPoints'] as num).toInt(),
       createdAt: DateTime.parse(j['createdAt'] as String),
@@ -65,7 +60,6 @@ class User {
     'lastName': lastName,
     'phone': phone,
     'emailVerified': emailVerified,
-    'phoneVerified': phoneVerified,
     'serialNumber': serialNumber,
     'loyaltyPoints': loyaltyPoints,
     'createdAt': createdAt.toUtc().toIso8601String(),
@@ -79,7 +73,6 @@ class User {
     String? lastName,
     String? phone,
     bool? emailVerified,
-    bool? phoneVerified,
     int? loyaltyPoints,
     bool? budgetAlertEmails,
     bool? weeklySummaryEmails,
@@ -92,7 +85,6 @@ class User {
         lastName: lastName ?? this.lastName,
         phone: phone ?? this.phone,
         emailVerified: emailVerified ?? this.emailVerified,
-        phoneVerified: phoneVerified ?? this.phoneVerified,
         serialNumber: serialNumber,
         loyaltyPoints: loyaltyPoints ?? this.loyaltyPoints,
         createdAt: createdAt,
