@@ -47,7 +47,11 @@ class ApiException implements Exception {
   /// True when our server answered with a JSON `{ "error": ... }` body.
   /// False for timeouts and non-JSON replies (e.g. an HTML 404 from the host).
   final bool fromServer;
-  ApiException(this.message, {this.statusCode, this.fromServer = false});
+
+  /// Machine-readable cause sent with some errors, e.g. 'trialOnly' when a
+  /// number can't receive Nexus SMS. Null when the server sent none.
+  final String? reason;
+  ApiException(this.message, {this.statusCode, this.fromServer = false, this.reason});
   @override
   String toString() => message;
 }
@@ -98,10 +102,12 @@ class ApiClient {
     }
     if (res.statusCode >= 400) {
       final error = body['error'];
+      final reason = body['reason'];
       throw ApiException(
         error is String ? error : 'Request failed',
         statusCode: res.statusCode,
         fromServer: error is String,
+        reason: reason is String ? reason : null,
       );
     }
     return body;
@@ -220,6 +226,36 @@ class ApiClient {
     final res = await http
         .post(
           Uri.parse('${AppConfig.baseUrl}/user/email/verify'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({'code': code}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    return User.fromJson(_parse(res));
+  }
+
+  /// Ask the backend to text a verification code to the profile's number.
+  /// Throws ApiException (statusCode 429) if one was sent under a minute ago,
+  /// or 400 with a [ApiException.reason] if the number can't get Nexus SMS.
+  static Future<void> sendPhoneCode() async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/user/phone/send-code'),
+          headers: await _headers(auth: true),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    _parse(res);
+  }
+
+  static Future<User> verifyPhone(String code) async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/user/phone/verify'),
           headers: await _headers(auth: true),
           body: jsonEncode({'code': code}),
         )
