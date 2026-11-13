@@ -17,6 +17,7 @@ model User {
   lastName      String?
   phone         String?  @unique
   emailVerified Boolean  @default(false)
+  phoneVerified Boolean  @default(false)
   serialNumber  String   @unique
   loyaltyPoints Int      @default(0)
   createdAt     DateTime @default(now())
@@ -39,7 +40,9 @@ model User {
   @@map("nexus_users")
 }
 
-// One active code per user per type ("email" now, "phone" later)
+// One active code per user per type ("email", "phone" or "login").
+// SMS codes in Twilio mode store codeHash = 'twilio:<Verification SID>'.
+// sentTo: where the code went (normalized number for SMS, NULL for email).
 model VerificationCode {
   id         String   @id @default(uuid())
   userId     String
@@ -48,6 +51,7 @@ model VerificationCode {
   expiresAt  DateTime
   attempts   Int      @default(0)
   lastSentAt DateTime @default(now())
+  sentTo     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

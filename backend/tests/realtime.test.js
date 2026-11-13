@@ -105,6 +105,8 @@ test("isolation: user B does not get A's receipt", async () => {
 test.each([
   ['a bad token', 'not-a-jwt'],
   ['a token signed with another secret', jwt.sign({ userId: 'x' }, 'other-secret')],
+  ['a token without a userId', jwt.sign({ sub: 'x' }, process.env.JWT_SECRET)],
+  ['a token with an empty userId', jwt.sign({ userId: '' }, process.env.JWT_SECRET)],
   ['no token', undefined],
 ])('%s gets connect_error unauthorized', async (_label, token) => {
   const { err } = await connect(token, { waitFor: 'error' });

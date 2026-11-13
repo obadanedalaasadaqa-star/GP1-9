@@ -15,6 +15,7 @@ const SAFE_USER_SELECT = {
   lastName: true,
   phone: true,
   emailVerified: true,
+  phoneVerified: true,
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,

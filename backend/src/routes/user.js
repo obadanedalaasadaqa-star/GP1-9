@@ -4,7 +4,8 @@ const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
 const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
-const { checkCode, sendEmailCode, resendWaitSeconds } = require('../lib/verification');
+const { checkCode, sendEmailCode, resendWaitSeconds, expireCode } = require('../lib/verification');
+const { sendPhoneCode, checkPhoneCode } = require('../lib/smsCodes');
 const { parseBounds, shapeStats } = require('../lib/stats');
 const { queryStats } = require('../lib/spendingQueries');
 const { parseTz } = require('../lib/aiDates');
@@ -18,6 +19,7 @@ const SAFE_SELECT = {
   lastName: true,
   phone: true,
   emailVerified: true,
+  phoneVerified: true,
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
@@ -48,7 +50,8 @@ module.exports = function userRoutes(limiters) {
   });
 
   // PATCH /api/user/me  — update first name, last name, phone, and email
-  // Changing the email requires the current password.
+  // Changing the email requires the current password. A new phone number
+  // (compared normalized) must be verified again; its pending SMS codes end.
   router.patch('/me', async (req, res) => {
     const firstName = req.body?.firstName?.trim();
     const lastName  = req.body?.lastName?.trim();
@@ -67,11 +70,17 @@ module.exports = function userRoutes(limiters) {
 
     try {
       const email = req.body?.email?.trim();
-      if (email) {
+      let phoneChanged = false;
+      if (email || data.phone) {
         const current = await prisma.user.findUnique({ where: { id: req.userId } });
         if (!current) return res.status(404).json({ error: 'User not found.' });
 
-        if (email !== current.email) {
+        if (data.phone && data.phone !== current.phone) {
+          data.phoneVerified = false;
+          phoneChanged = true;
+        }
+
+        if (email && email !== current.email) {
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({ error: 'Enter a valid email.' });
           }
@@ -93,6 +102,16 @@ module.exports = function userRoutes(limiters) {
         select: SAFE_SELECT,
       });
       if (data.email) await sendEmailCode(user, { ignoreWait: true });
+      if (phoneChanged) {
+        // Codes sent to the old number stop working; a new one may be sent at
+        // once. Never breaks the update (the sentTo check still rejects them).
+        try {
+          await expireCode(req.userId, 'phone', { clearWait: true });
+          await expireCode(req.userId, 'login');
+        } catch (err) {
+          console.error('[user/patch] expire phone code', err);
+        }
+      }
       res.json(user);
     } catch (err) {
       if (err.code === 'P2002') {
@@ -167,6 +186,81 @@ module.exports = function userRoutes(limiters) {
     } catch (err) {
       console.error('[user/email/verify]', err);
       res.status(500).json({ error: 'Failed to verify email.' });
+    }
+  });
+
+  // Runs before the phoneSendCode limiter (same idea as sendCodePrecheck):
+  // no number, already verified and the 60 s wait don't use up the hourly cap.
+  async function phonePrecheck(req, res, next) {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: req.userId }, select: SAFE_SELECT });
+      if (!user) return res.status(404).json({ error: 'User not found.' });
+      if (!normalizeJordanPhone(user.phone)) {
+        return res.status(400).json({ error: 'Add a valid mobile number in Profile first.' });
+      }
+      if (user.phoneVerified) return res.status(400).json({ error: 'Phone number is already verified.' });
+
+      const waitSeconds = await resendWaitSeconds(req.userId, 'phone');
+      if (waitSeconds > 0) {
+        return res.status(429).json({
+          error: `Please wait ${waitSeconds}s before requesting a new code.`,
+          waitSeconds,
+        });
+      }
+      res.locals.user = user;
+      next();
+    } catch (err) {
+      console.error('[user/phone/send-code]', err);
+      res.status(500).json({ error: 'Failed to send code.' });
+    }
+  }
+
+  // POST /api/user/phone/send-code — text a code to the profile's number
+  router.post('/phone/send-code', phonePrecheck, limiters.phoneSendCode, async (req, res) => {
+    try {
+      const result = await sendPhoneCode(res.locals.user);
+      if (result.waitSeconds) {
+        return res.status(429).json({
+          error: `Please wait ${result.waitSeconds}s before requesting a new code.`,
+          waitSeconds: result.waitSeconds,
+        });
+      }
+      if (result.error) {
+        return res.status(result.status).json({
+          error: result.error, ...(result.reason && { reason: result.reason }),
+        });
+      }
+      res.json({ message: `Code sent to ${result.to}.` });
+    } catch (err) {
+      console.error('[user/phone/send-code]', err);
+      res.status(500).json({ error: 'Failed to send code.' });
+    }
+  });
+
+  // POST /api/user/phone/verify — confirm the number with the 6-digit SMS code
+  router.post('/phone/verify', limiters.phoneVerifyCode, async (req, res) => {
+    const code = req.body?.code;
+    if (!code || !/^\d{6}$/.test(String(code).trim())) {
+      return res.status(400).json({ error: 'Enter the 6-digit code.' });
+    }
+
+    try {
+      const current = await prisma.user.findUnique({ where: { id: req.userId }, select: SAFE_SELECT });
+      if (!current) return res.status(404).json({ error: 'User not found.' });
+      if (current.phoneVerified) return res.status(400).json({ error: 'Phone number is already verified.' });
+
+      const problem = await checkPhoneCode(current, String(code).trim());
+      if (problem) return res.status(problem.status).json({ error: problem.error });
+
+      const user = await prisma.user.update({
+        where: { id: req.userId },
+        data: { phoneVerified: true },
+        select: SAFE_SELECT,
+      });
+      res.json(user);
+    } catch (err) {
+      console.error('[user/phone/verify]', err);
+      res.status(500).json({ error: 'Failed to verify phone number.' });
     }
   });
 

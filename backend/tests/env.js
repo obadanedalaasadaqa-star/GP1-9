@@ -19,6 +19,12 @@ delete process.env.GMAIL_APP_PASSWORD;
 delete process.env.BREVO_API_KEY;
 delete process.env.MAIL_FROM;
 
+// Tests must never send real SMS: without these, phone codes are only
+// printed ([sms:dev]). Files that test Twilio mode use tests/twilioMock.js.
+delete process.env.TWILIO_ACCOUNT_SID;
+delete process.env.TWILIO_AUTH_TOKEN;
+delete process.env.TWILIO_VERIFY_SERVICE_SID;
+
 // Tests must never reach the real Claude API, and must not depend on a
 // developer's model choice in .env.
 delete process.env.ANTHROPIC_API_KEY;
