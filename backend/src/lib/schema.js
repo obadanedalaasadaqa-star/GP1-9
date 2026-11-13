@@ -151,6 +151,50 @@ async function ensureSchema() {
     );
   `);
   console.log('   DB: nexus_ai_reports table ready');
+
+  // Budget alert and weekly summary settings. tzOffsetMinutes is the phone's
+  // offset (minutes east of UTC), saved with a budget or a setting.
+  // weeklySummarySentWeek is internal: the 'YYYY-MM-DD' Sunday of the last week
+  // emailed (or skipped). Neither of the last two is ever returned by the API.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "budgetAlertEmails"     BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS "weeklySummaryEmails"   BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "tzOffsetMinutes"       INTEGER NOT NULL DEFAULT 180,
+      ADD COLUMN IF NOT EXISTS "weeklySummarySentWeek" TEXT;
+  `);
+  console.log('   DB: nexus_users budget/alert columns ready');
+
+  // One monthly budget per user per category (the same amount every month).
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_budgets (
+      "userId"       TEXT        NOT NULL REFERENCES nexus_users(id) ON DELETE CASCADE,
+      category       TEXT        NOT NULL,
+      "monthlyLimit" FLOAT8      NOT NULL CHECK ("monthlyLimit" > 0),
+      "createdAt"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updatedAt"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("userId", category)
+    );
+  `);
+  console.log('   DB: nexus_budgets table ready');
+
+  // Budget alerts already sent. The primary key is the "fire once" rule: each
+  // level fires at most once per category per month ('YYYY-MM', user's zone).
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_budget_alerts (
+      "userId"       TEXT        NOT NULL REFERENCES nexus_users(id) ON DELETE CASCADE,
+      category       TEXT        NOT NULL,
+      month          TEXT        NOT NULL,
+      level          SMALLINT    NOT NULL CHECK (level IN (80, 100)),
+      spent          FLOAT8      NOT NULL,
+      "monthlyLimit" FLOAT8      NOT NULL,
+      "receiptId"    TEXT,
+      emailed        BOOLEAN     NOT NULL DEFAULT false,
+      "createdAt"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("userId", category, month, level)
+    );
+  `);
+  console.log('   DB: nexus_budget_alerts table ready');
 }
 
 module.exports = { ensureSchema };

@@ -35,6 +35,10 @@ const DEFAULT_LIMITS = {
                    error: 'Too many reports. Try again in a few minutes.' },
   aiReportEmail: { windowMs: 60 * MIN, limit: 3,  byUser: true,
                    error: 'Too many report emails. Try again later.' },
+  // Budget changes (PUT/DELETE /api/budgets) and PATCH /api/user/notifications.
+  // Never on GET.
+  budgets:       { windowMs: 10 * MIN, limit: 60, byUser: true,
+                   error: 'Too many budget changes. Try again in a few minutes.' },
 };
 
 const passThrough = (_req, _res, next) => next();
@@ -64,7 +68,7 @@ function buildLimiter(name, {
 
 /**
  * Returns { login, register, sendCode, verifyCode, storeAuth, storeReceipts,
- * aiInsight, aiChat, aiReport, aiReportEmail } middlewares.
+ * aiInsight, aiChat, aiReport, aiReportEmail, budgets } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.
  */

@@ -1,6 +1,9 @@
 jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 
 const request = require('supertest');
+const prisma = require('../src/lib/prisma');
+const { TZ_ERROR } = require('../src/lib/aiDates');
+const { latestWeek } = require('../src/lib/weeklySummary');
 const { makeApp, uniqueEmail, registerUser, cleanup } = require('./helpers');
 
 // Many sequential DB round trips; the default 30 s is too tight on the pooler.
@@ -126,4 +129,68 @@ describe('PATCH /api/user/password', () => {
       .send({ email: u.email, password: 'Better@2027' });
     expect(newLogin.status).toBe(200);
   });
+});
+
+describe('PATCH /api/user/notifications', () => {
+  let u;
+  beforeAll(async () => { u = await registerUser(app); }, SLOW);
+  const patch = (body) => request(app).patch('/api/user/notifications').set(auth(u.token)).send(body);
+  const internal = () => prisma.user.findUnique({
+    where: { id: u.user.id }, select: { tzOffsetMinutes: true, weeklySummarySentWeek: true },
+  });
+
+  test('N-1 /me has the settings and never the internal columns', async () => {
+    const res = await request(app).get('/api/user/me').set(auth(u.token));
+    expect(res.body).toMatchObject({ budgetAlertEmails: true, weeklySummaryEmails: false });
+    expect(res.body).not.toHaveProperty('tzOffsetMinutes');
+    expect(res.body).not.toHaveProperty('weeklySummarySentWeek');
+  });
+
+  test('N-2 each field saves and comes back in the user', async () => {
+    let res = await patch({ budgetAlertEmails: false });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: u.user.id, budgetAlertEmails: false, weeklySummaryEmails: false });
+    expect(res.body).not.toHaveProperty('tzOffsetMinutes');
+    res = await patch({ budgetAlertEmails: true, tzOffsetMinutes: -300, unknown: 1 });
+    expect(res.status).toBe(200);
+    expect(res.body.budgetAlertEmails).toBe(true);
+    expect((await internal()).tzOffsetMinutes).toBe(-300);
+    res = await patch({ tzOffsetMinutes: 180 });
+    expect(res.status).toBe(200);
+  }, SLOW);
+
+  test('N-3 400s', async () => {
+    const cases = [
+      [{}, 'Nothing to update.'],
+      [{ other: true }, 'Nothing to update.'],
+      [{ budgetAlertEmails: 'true' }, 'budgetAlertEmails must be true or false.'],
+      [{ weeklySummaryEmails: 1 }, 'weeklySummaryEmails must be true or false.'],
+      [{ tzOffsetMinutes: 'x' }, TZ_ERROR],
+    ];
+    for (const [body, error] of cases) {
+      const res = await patch(body);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error });
+    }
+    expect((await request(app).patch('/api/user/notifications').send({ budgetAlertEmails: true })).status).toBe(401);
+  }, SLOW);
+
+  test('N-4 turning weekly on marks the latest week as done', async () => {
+    let res = await patch({ weeklySummaryEmails: true, tzOffsetMinutes: 180 });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ weeklySummaryEmails: true, budgetAlertEmails: true });
+    const key = latestWeek(new Date(), 180).key;
+    expect((await internal()).weeklySummarySentWeek).toBe(key);
+
+    // Already on: the key is not touched.
+    await prisma.user.update({ where: { id: u.user.id }, data: { weeklySummarySentWeek: '2020-01-05' } });
+    await patch({ weeklySummaryEmails: true });
+    expect((await internal()).weeklySummarySentWeek).toBe('2020-01-05');
+
+    // Off and on again: set again.
+    await patch({ weeklySummaryEmails: false });
+    res = await patch({ weeklySummaryEmails: true });
+    expect(res.body.weeklySummaryEmails).toBe(true);
+    expect((await internal()).weeklySummarySentWeek).toBe(key);
+  }, SLOW);
 });

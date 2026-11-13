@@ -196,3 +196,88 @@ describe('sendReportEmail', () => {
     expect(console.log).toHaveBeenCalledWith('[mail:dev] Report for a@example.com: 1 – 11 Nov 2026, 287.99 JD, AI ready');
   });
 });
+
+describe('sendBudgetAlertEmail', () => {
+  const alert = (over = {}) => ({
+    receiptId: 'r1', category: 'Food', level: 80, percent: 85, spent: 8.5, limit: 10,
+    remaining: 1.5, overBy: 0, month: '2026-11', monthLabel: 'November 2026', ...over,
+  });
+
+  test('80%: subject, amounts and what is left', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendBudgetAlertEmail('a@example.com', 'Sara', alert());
+    const { subject, htmlContent, textContent } = lastBrevoBody();
+    expect(subject).toBe("You've used 85% of your Food budget");
+    expect(htmlContent).toContain('8.50 JD of 10.00 JD used (85%)');
+    expect(htmlContent).toContain('1.50 JD left');
+    expect(textContent).toContain('Food budget, November 2026:');
+    expect(textContent).toContain('Profile → Budgets & alerts');
+  });
+
+  test('100%: subject with the month and "Over by"', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendBudgetAlertEmail('a@example.com', 'Sara',
+      alert({ level: 100, percent: 105, spent: 10.5, remaining: 0, overBy: 0.5 }));
+    const { subject, htmlContent } = lastBrevoBody();
+    expect(subject).toBe("You're over your Food budget for November 2026");
+    expect(htmlContent).toContain('Over by 0.50 JD');
+  });
+
+  test('a <script> category is escaped in the HTML', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendBudgetAlertEmail('a@example.com', '<b>Sara</b>', alert({ category: '<script>x</script>' }));
+    const { htmlContent } = lastBrevoBody();
+    expect(htmlContent).not.toContain('<script>');
+    expect(htmlContent).toContain('&lt;script&gt;x&lt;/script&gt;');
+    expect(htmlContent).not.toContain('<b>Sara</b>');
+  });
+
+  test('dev mode: no fetch, one [mail:dev] Budget alert line', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendBudgetAlertEmail('a@example.com', 'Sara', alert());
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Budget alert for a@example.com: Food 80% (8.50 / 10.00 JD)');
+  });
+});
+
+describe('sendWeeklySummaryEmail', () => {
+  const summary = () => ({
+    label: '8 – 14 Nov 2026', from: '2026-11-08', to: '2026-11-14',
+    total: 75, receipts: 6, average: 12.5, previousTotal: 50, difference: 25, changePercent: 50,
+    topCategories: [{ category: '<script>x</script>', total: 40, count: 3 }],
+    topStore: { storeName: 'KFC & Co', total: 30, count: 2 },
+    budgets: [{ category: 'Food', limit: 50, spent: 42.5, percent: 85, level: 'warning' }],
+    month: 'November 2026',
+  });
+
+  test('subject, totals, change, budgets; dynamic values escaped', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendWeeklySummaryEmail('a@example.com', 'Sara', summary());
+    const { subject, htmlContent, textContent } = lastBrevoBody();
+    expect(subject).toBe('Your Nexus week: 8 – 14 Nov 2026');
+    expect(htmlContent).toContain('75.00 JD');
+    expect(htmlContent).toContain('+25.00 JD (+50%) vs the week before (50.00 JD)');
+    expect(htmlContent).not.toContain('<script>');
+    expect(htmlContent).toContain('&lt;script&gt;x&lt;/script&gt;');
+    expect(htmlContent).toContain('KFC &amp; Co');
+    expect(htmlContent).toContain('42.50 / 50.00 JD (85%)');
+    expect(textContent).toContain('- Food 42.50 / 50.00 JD (85%)');
+    expect(textContent).toContain('Weekly summary is on in Nexus → Profile.');
+  });
+
+  test('no week before: the change shows "—"', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendWeeklySummaryEmail('a@example.com', 'Sara',
+      { ...summary(), previousTotal: 0, difference: 75, changePercent: null, budgets: [], topStore: null });
+    const { textContent } = lastBrevoBody();
+    expect(textContent).toContain('+75.00 JD (—)');
+    expect(textContent).not.toContain('Budgets this month');
+  });
+
+  test('dev mode: no fetch, one [mail:dev] Weekly summary line', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendWeeklySummaryEmail('a@example.com', 'Sara', summary());
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Weekly summary for a@example.com: 8 – 14 Nov 2026, 75.00 JD');
+  });
+});

@@ -5,6 +5,8 @@
 const sent = [];
 const sentReceipts = [];
 const sentReports = [];
+const sentBudgetAlerts = [];
+const sentWeekly = [];
 
 const sendVerificationEmail = jest.fn(async (to, firstName, code) => {
   sent.push({ to, firstName, code });
@@ -18,6 +20,16 @@ const sendReceiptEmail = jest.fn(async (to, firstName, receipt) => {
 // Spending report emails (POST /api/ai/report/email).
 const sendReportEmail = jest.fn(async (to, firstName, report, tz) => {
   sentReports.push({ to, firstName, report, tz });
+});
+
+// Budget alerts at 80% / 100% (lib/budgetAlerts.js).
+const sendBudgetAlertEmail = jest.fn(async (to, firstName, alert) => {
+  sentBudgetAlerts.push({ to, firstName, alert });
+});
+
+// Weekly summary emails (lib/weeklyJob.js).
+const sendWeeklySummaryEmail = jest.fn(async (to, firstName, summary) => {
+  sentWeekly.push({ to, firstName, summary });
 });
 
 // Last code sent to [email], or undefined.
@@ -36,5 +48,9 @@ module.exports = {
   sentReceipts,
   sendReportEmail,
   sentReports,
+  sendBudgetAlertEmail,
+  sentBudgetAlerts,
+  sendWeeklySummaryEmail,
+  sentWeekly,
   lastCodeFor,
 };

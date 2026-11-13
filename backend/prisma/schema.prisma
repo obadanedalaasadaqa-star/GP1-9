@@ -22,11 +22,19 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Budget alerts and weekly summary. The last two are internal (never returned).
+  budgetAlertEmails     Boolean @default(true)
+  weeklySummaryEmails   Boolean @default(false)
+  tzOffsetMinutes       Int     @default(180)
+  weeklySummarySentWeek String?
+
   receipts          Receipt[]
   verificationCodes VerificationCode[]
   aiInsight         AiInsight?
   aiUsage           AiUsage[]
   aiReports         AiReport[]
+  budgets           Budget[]
+  budgetAlerts      BudgetAlert[]
 
   @@map("nexus_users")
 }
@@ -128,4 +136,36 @@ model AiReport {
 
   @@id([userId, rangeKey])
   @@map("nexus_ai_reports")
+}
+
+// Monthly budget per category (the same amount every month).
+model Budget {
+  userId       String
+  category     String
+  monthlyLimit Float
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category])
+  @@map("nexus_budgets")
+}
+
+// Budget alerts sent: each level (80, 100) at most once per category per month.
+model BudgetAlert {
+  userId       String
+  category     String
+  month        String
+  level        Int      @db.SmallInt
+  spent        Float
+  monthlyLimit Float
+  receiptId    String?
+  emailed      Boolean  @default(false)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category, month, level])
+  @@map("nexus_budget_alerts")
 }
