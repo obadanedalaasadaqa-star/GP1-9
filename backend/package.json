@@ -11,6 +11,7 @@
     "start": "node src/index.js",
     "test": "jest --runInBand",
     "store:create": "node scripts/create-store.js",
+    "weekly:send": "node scripts/send-weekly.js",
     "db:studio": "npx prisma studio"
   },
   "dependencies": {

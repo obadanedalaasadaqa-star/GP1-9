@@ -157,6 +157,47 @@ store keeps working for **up to 60 s** (or until the server restarts).
 
 A lost key cannot be recovered: create a new store and delete the old row.
 
+### Budgets and alerts
+
+Users set a monthly budget per category in the app (Profile → Budgets & alerts,
+or the Budgets card in Trends). "Spent" is the sum of the user's receipts in
+that category for the current calendar month in the user's time zone, with the
+same `[from, to)` rule as `/api/user/stats`, so the bars match Trends.
+
+- **Alerts at 80% and 100%.** Checked after each **store** receipt
+  (`POST /api/store/receipts`), after the store already got its 201. The phone
+  gets a live `budget:alert` event (always on) and, when "Budget alert emails"
+  is on and the email is verified, an email. Each level fires **once per
+  category per month** (table `nexus_budget_alerts`); one receipt that jumps
+  past 100% gives a single 100% alert. Changing or removing a budget resets that
+  category's alerts for the current month (the same amount resets nothing).
+  Manual (`POST /api/receipts`) and seeded receipts count toward the bars but
+  never trigger an alert.
+- **Time zone:** the app sends its offset (`tzOffsetMinutes`) when it saves a
+  budget or a setting; the server keeps it per user (default 180, Jordan) for
+  "this month" in alerts.
+- **Limits:** up to 20 budgets, 1 to 100000 JD each. Budget changes and
+  notification settings: 60 per 10 min per user.
+
+- **Weekly summary email (opt-in, Profile → Weekly summary email).** Sent from
+  Sunday 09:00 in the user's time zone about the previous Sunday-Saturday week:
+  total, receipts, change vs the week before, top categories, top store and
+  this month's budgets (numbers only, no AI text). Skipped when that week had no
+  receipts; the first one comes the Sunday after opting in. A timer in the
+  server checks every 15 minutes (startup log `Weekly summary: on …`), so if
+  the server slept through Sunday morning the email goes out at the next check,
+  never twice. `WEEKLY_SUMMARY=off` in `.env` stops it. To send one by hand:
+
+  ```bash
+  cd backend
+  npm run weekly:send -- you@example.com           # only if this week's is not sent yet
+  npm run weekly:send -- you@example.com --force   # send again
+  ```
+
+**Third-party data:** budget alert and weekly summary emails go through the
+same mail provider as receipt copies (Brevo on Render, Gmail locally) and
+contain category and store names, budgets, amounts spent and dates.
+
 ---
 
 ## 2 — Flutter App Setup
@@ -225,16 +266,22 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | POST | `/api/ai/chat` | Ask AI: `{ question, history?, tzOffsetMinutes? }` → `{ answer, toolsUsed, remainingToday }` |
 | GET | `/api/ai/report?period=…` | Spending report: `1m`, `3m`, `6m`, `1y` or `custom&from=YYYY-MM-DD&to=YYYY-MM-DD` |
 | POST | `/api/ai/report/email` | Email the report to the verified address |
+| GET | `/api/budgets?tzOffsetMinutes=` | This month's budgets with spent/percent/level, and the categories to pick from |
+| PUT | `/api/budgets` | Create or change one: `{ category, limit, tzOffsetMinutes? }` → the list |
+| DELETE | `/api/budgets/:category` | Remove one (URL-encoded name) → the list |
+| PATCH | `/api/user/notifications` | `{ budgetAlertEmails?, weeklySummaryEmails?, tzOffsetMinutes? }` → the user |
 
 `/api/user/stats` takes `bounds`: 2 to 13 comma-separated ISO instants with a
 time zone (e.g. `2026-10-31T21:00:00.000Z`), oldest first. Each neighbour pair
 is one period, from inclusive and to exclusive (the same rule as `?from&to`).
 
-`/api/user/*`, `/api/receipts*` and `/api/ai/*` require an `Authorization: Bearer <token>`
+`/api/user/*`, `/api/receipts*`, `/api/ai/*` and `/api/budgets*` require an `Authorization: Bearer <token>`
 header. `/api/store/*` requires an `X-Store-Key: nxs_sk_…` header instead.
 
 Live updates: the app opens a Socket.IO connection to the server root with
-`auth: { token }` and receives `receipt:new` events in its own room.
+`auth: { token }` and receives `receipt:new` events in its own room, and
+`budget:alert` events after a store receipt that reaches 80% or 100% of a budget:
+`{ receiptId, category, level (80 | 100), percent, spent, limit, remaining, overBy, month, monthLabel }`.
 
 ---
 
