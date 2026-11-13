@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
+import '../core/budget_models.dart';
 import '../core/constants.dart';
 import '../core/money.dart';
 import '../core/offline_cache.dart';
@@ -10,8 +11,10 @@ import '../core/realtime_service.dart';
 import '../core/stats_model.dart';
 import '../core/theme_provider.dart';
 import '../core/trends.dart';
+import '../widgets/budget_bar.dart';
 import '../widgets/offline_banner.dart';
 import 'ai_screen.dart';
+import 'budgets_screen.dart';
 
 /// Trends tab: this month vs last month, the last 6 months, categories,
 /// biggest store and average receipt. Uses the same month periods as the
@@ -29,6 +32,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
   bool _offline = false;     // showing stats saved on the phone
   DateTime? _savedAt;
   int _requestId = 0; // ignores responses older than the latest load
+  // This month's budgets; null hides the card (not loaded, failed, or a saved
+  // list from another month).
+  BudgetList? _budgets;
+  int _budgetsRequestId = 0;
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
 
   static const _months = ['Jan','Feb','Mar','Apr','May','Jun',
@@ -64,6 +71,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   /// User-started loads (opening the tab, refresh, Retry) show the saved stats
   /// at once if nothing is on screen yet, and refresh numbers in place.
   Future<void> _load({bool silent = false}) async {
+    _loadBudgets(); // in parallel; never touches the stats states
     final id = ++_requestId;
     final bounds = monthBounds(DateTime.now()); // picks up a month rollover
     if (!silent && _stats == null) {
@@ -100,6 +108,24 @@ class _TrendsScreenState extends State<TrendsScreen> {
           SnackBar(content: Text(e.toString())));
       }
     }
+  }
+
+  /// The Budgets card's list. Any failure just hides the card.
+  Future<void> _loadBudgets() async {
+    final id = ++_budgetsRequestId;
+    BudgetList? list;
+    try {
+      list = (await ApiClient.loadBudgets()).list;
+    } catch (_) {
+      list = null;
+    }
+    if (!mounted || id != _budgetsRequestId) return;
+    setState(() => _budgets = (list != null && list.isMonthOf(DateTime.now())) ? list : null);
+  }
+
+  Future<void> _openBudgets() async {
+    await BudgetsScreen.open(context);
+    if (mounted) _loadBudgets();
   }
 
   @override
@@ -346,6 +372,12 @@ class _TrendsScreenState extends State<TrendsScreen> {
           )),
           const SizedBox(height: 16),
 
+          // Budgets (only for the current month)
+          if (isNow && _budgets != null) ...[
+            _buildBudgets(_budgets!, surface, border, textPrimary, textMuted),
+            const SizedBox(height: 16),
+          ],
+
           // 2. Last 6 months
           _card(surface, border, child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -448,6 +480,47 @@ class _TrendsScreenState extends State<TrendsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildBudgets(BudgetList list, Color surface, Color border,
+      Color textPrimary, Color textMuted) {
+    final edit = GestureDetector(
+      key: const ValueKey('trends-budgets-edit'),
+      onTap: _openBudgets,
+      child: Text(list.budgets.isEmpty ? 'Set up' : 'Edit',
+        style: GoogleFonts.dmSans(
+          fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gold)),
+    );
+    if (list.budgets.isEmpty) {
+      return _card(surface, border, child: Row(
+        children: [
+          const Icon(Icons.savings_rounded, color: AppColors.gold, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text('Set monthly budgets',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+          ),
+          edit,
+        ],
+      ));
+    }
+    return _card(surface, border, child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Budgets',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+            edit,
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (final b in list.budgets) BudgetBar(status: b),
+      ],
+    ));
   }
 
   Widget _tileTitle(String text, Color textMuted) => Padding(

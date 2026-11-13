@@ -1,11 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../core/budget_models.dart';
 import '../core/constants.dart';
 import '../core/money.dart';
 import '../core/receipt_model.dart';
 import '../core/theme_provider.dart';
+import 'budget_alert.dart';
 
 /// Bottom sheet shown when a store sends the user a receipt (live, via the socket).
 class NewReceiptSheet extends StatefulWidget {
@@ -14,12 +17,17 @@ class NewReceiptSheet extends StatefulWidget {
   final VoidCallback onViewArchive;
   final VoidCallback onDone;
 
+  /// Budget alerts caused by this receipt (they arrive just after it); each
+  /// one shows as a banner above the buttons.
+  final ValueListenable<List<BudgetAlert>>? alerts;
+
   const NewReceiptSheet({
     super.key,
     required this.receipt,
     required this.pointsEarned,
     required this.onViewArchive,
     required this.onDone,
+    this.alerts,
   });
 
   static const maxItems = 4;
@@ -129,6 +137,21 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
               ),
             ),
           const SizedBox(height: 20),
+
+          // Budget alerts for this receipt
+          if (widget.alerts != null)
+            ValueListenableBuilder<List<BudgetAlert>>(
+              valueListenable: widget.alerts!,
+              builder: (_, alerts, _) => Column(
+                children: [
+                  for (final a in alerts) ...[
+                    BudgetAlertBanner(alert: a),
+                    const SizedBox(height: 12),
+                  ],
+                  if (alerts.isNotEmpty) const SizedBox(height: 4),
+                ],
+              ),
+            ),
 
           // Buttons
           SizedBox(

@@ -7,18 +7,20 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'core/ai_chat_session.dart';
 import 'core/api_client.dart';
 import 'core/auth_provider.dart';
+import 'core/budget_models.dart';
 import 'core/constants.dart';
 import 'core/realtime_service.dart';
 import 'core/receipt_event.dart';
 import 'core/theme_provider.dart';
 import 'screens/auth_screen.dart';
+import 'screens/budgets_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/archive_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/verify_email_screen.dart';
 import 'widgets/bottom_nav.dart';
-import 'widgets/new_receipt_sheet.dart';
+import 'widgets/live_sheets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -414,7 +416,7 @@ class _MainShell extends StatefulWidget {
   State<_MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<_MainShell> {
+class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
   int _index = 0;
 
   // Live receipts. Created per shell, so logout (which replaces the shell
@@ -425,9 +427,7 @@ class _MainShellState extends State<_MainShell> {
   // Ask AI chat for this login session (in memory only, gone after logout).
   late final AiChatSession _chat = AiChatSession();
 
-  // Open sheets, kept as routes so exactly that sheet can be closed later.
-  ModalBottomSheetRoute<void>? _qrRoute;
-  ModalBottomSheetRoute<void>? _receiptRoute;
+  // The open QR / "New receipt" / budget alert sheets live in LiveSheets.
   bool _expiring = false;
 
   @override
@@ -436,6 +436,7 @@ class _MainShellState extends State<_MainShell> {
     _realtime = RealtimeService();
     _subs.addAll([
       _realtime.receipts.listen(_onReceipt),
+      _realtime.budgetAlerts.listen(_onBudgetAlert),
       _realtime.syncs.listen((_) => _onSync()),
       _realtime.unauthorized.listen((_) => _onSessionExpired()),
     ]);
@@ -470,45 +471,13 @@ class _MainShellState extends State<_MainShell> {
     ProfileScreen(),
   ];
 
-  // Same route showModalBottomSheet builds, but we keep the object.
-  ModalBottomSheetRoute<void> _sheetRoute(WidgetBuilder builder) {
-    final navigator = Navigator.of(context);
-    final localizations = MaterialLocalizations.of(context);
-    return ModalBottomSheetRoute<void>(
-      builder: builder,
-      capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierLabel: localizations.scrimLabel,
-      barrierOnTapHint: localizations.scrimOnTapHint(localizations.bottomSheetLabel),
-      modalBarrierColor: Theme.of(context).bottomSheetTheme.modalBarrierColor,
-    );
-  }
-
-  // Close exactly [route] if it is still open. On top: animated pop.
-  // Under another route (e.g. VerifyEmailScreen): removed in place.
-  void _closeSheet(ModalBottomSheetRoute<void>? route) {
-    if (route == null || !route.isActive) return;
-    final navigator = Navigator.of(context);
-    if (route.isCurrent) {
-      navigator.pop();
-    } else {
-      navigator.removeRoute(route);
-    }
-  }
-
   void _showQrModal() {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
-    final route = _sheetRoute((_) => _QrSheet(
+    showQrSheet((_) => _QrSheet(
       qrData: 'NEXUS:${user.serialNumber}:${user.id}',
       serial: user.serialNumber,
     ));
-    _qrRoute = route;
-    // whenComplete also runs on swipe-dismiss, so the field never points at a dead route.
-    Navigator.of(context).push(route).whenComplete(() {
-      if (_qrRoute == route) _qrRoute = null;
-    });
   }
 
   // A store sent a receipt: update the points, swap any open sheet for the
@@ -519,22 +488,18 @@ class _MainShellState extends State<_MainShell> {
     final user = auth.user;
     if (user != null) auth.updateUser(user.copyWith(loyaltyPoints: e.loyaltyPoints));
 
-    _closeSheet(_qrRoute);
-    _closeSheet(_receiptRoute);
+    showReceiptSheet(e, onViewArchive: () {
+      if (mounted) setState(() => _index = 1);
+    });
+  }
 
-    late final ModalBottomSheetRoute<void> route;
-    route = _sheetRoute((_) => NewReceiptSheet(
-      receipt: e.receipt,
-      pointsEarned: e.pointsEarned,
-      onViewArchive: () {
-        _closeSheet(route);
-        if (mounted) setState(() => _index = 1);
-      },
-      onDone: () => _closeSheet(route),
-    ));
-    _receiptRoute = route;
-    Navigator.of(context).push(route).whenComplete(() {
-      if (_receiptRoute == route) _receiptRoute = null;
+  // A store receipt reached 80% / 100% of a budget: a banner in its "New
+  // receipt" sheet, or a budget alert sheet. The Budgets screen gets the
+  // shell's RealtimeService directly (the provider is below this context).
+  void _onBudgetAlert(BudgetAlert alert) {
+    if (!mounted || _expiring) return;
+    showBudgetAlert(alert, onViewBudgets: () {
+      if (mounted) BudgetsScreen.open(context, realtime: _realtime);
     });
   }
 
@@ -553,8 +518,7 @@ class _MainShellState extends State<_MainShell> {
   void _onSessionExpired() {
     if (!mounted || _expiring) return;
     _expiring = true;
-    _closeSheet(_qrRoute);
-    _closeSheet(_receiptRoute);
+    closeLiveSheets();
     Navigator.of(context).popUntil((r) => r.isFirst);
     // The root ScaffoldMessenger (MaterialApp) keeps it visible on AuthScreen.
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
