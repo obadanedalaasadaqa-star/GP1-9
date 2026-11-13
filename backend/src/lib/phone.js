@@ -11,4 +11,12 @@ function normalizeJordanPhone(input) {
   return /^7[789]\d{7}$/.test(digits) ? `+962${digits}` : null;
 }
 
-module.exports = { normalizeJordanPhone };
+// '+962791234567' -> '079 *** 4567', for API messages and logs.
+// Returns null for anything normalizeJordanPhone() rejects.
+function maskPhone(input) {
+  const phone = normalizeJordanPhone(input);
+  if (!phone) return null;
+  return `0${phone.slice(4, 6)} *** ${phone.slice(-4)}`;
+}
+
+module.exports = { normalizeJordanPhone, maskPhone };

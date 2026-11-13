@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
+const { hasUserId } = require('../middleware/auth');
 
 // Live push to the app. Each phone joins the room "user:<id>" with its JWT,
 // and the server only pushes (receipt:new). Phones never send events.
@@ -13,6 +14,7 @@ function initRealtime(httpServer) {
   io.use((socket, next) => {
     try {
       const decoded = jwt.verify(socket.handshake.auth?.token, process.env.JWT_SECRET);
+      if (!hasUserId(decoded)) throw new Error('no userId'); // same rule as authMiddleware
       socket.data.userId = decoded.userId;
       socket.data.exp = decoded.exp;
       next();

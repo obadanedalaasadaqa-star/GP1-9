@@ -206,3 +206,51 @@ describe('store limiters', () => {
     expect((await sendReceipt(app, shopB.key, serial)).status).toBe(201);
   }, SLOW);
 });
+
+// Without TWILIO_* (tests/env.js) the phone codes are dev-mode codes, printed
+// to the (silenced) log, so these never reach Twilio.
+describe('phone limiters', () => {
+  const setPhoneSent = (u, date) => prisma.verificationCode.update({
+    where: { userId_type: { userId: u.user.id, type: 'phone' } },
+    data: { lastSentAt: date },
+  });
+
+  test('phoneSendCode: the wait 429s are free, the 3rd send is blocked', async () => {
+    const u = await registerUser(makeApp());
+    const app = createApp({ rateLimit: { phoneSendCode: { limit: 2 } } });
+    const send = () => request(app).post('/api/user/phone/send-code').set(auth(u.token));
+
+    expect((await send()).status).toBe(200);
+    for (let i = 0; i < 3; i++) {
+      const res = await send();
+      expect(res.status).toBe(429);
+      expect(res.body.waitSeconds).toBeGreaterThan(0);
+    }
+    await setPhoneSent(u, new Date(Date.now() - 2 * 60 * 1000));
+    expect((await send()).status).toBe(200);
+
+    await setPhoneSent(u, new Date(Date.now() - 2 * 60 * 1000));
+    const blocked = await send();
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers['content-type']).toMatch(/json/);
+    expect(blocked.body.error).toBe('Too many SMS requests. Try again later.');
+    expect(blocked.body.waitSeconds).toBeUndefined();
+  }, SLOW);
+
+  test('phoneVerifyCode is counted per user and separate from verifyCode', async () => {
+    const app = createApp({ rateLimit: { phoneVerifyCode: { limit: 2 } } });
+    const verify = (u) =>
+      request(app).post('/api/user/phone/verify').set(auth(u.token)).send({ code: '12a' });
+
+    expect((await verify(u1)).status).toBe(400);
+    expect((await verify(u1)).status).toBe(400);
+    const blocked = await verify(u1);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe('Too many attempts. Try again later.');
+
+    expect((await verify(u2)).status).toBe(400);
+    // The email limiter is untouched.
+    const email = await request(app).post('/api/user/email/verify').set(auth(u1.token)).send({ code: '12a' });
+    expect(email.status).toBe(400);
+  });
+});

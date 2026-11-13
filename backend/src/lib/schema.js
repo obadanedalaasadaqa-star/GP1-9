@@ -195,6 +195,19 @@ async function ensureSchema() {
     );
   `);
   console.log('   DB: nexus_budget_alerts table ready');
+
+  // Phone verification. phoneVerified starts false for everyone (existing
+  // users verify from Profile). sentTo is where a code went: the normalized
+  // number for SMS codes, NULL for email-verification codes.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "phoneVerified" BOOLEAN NOT NULL DEFAULT false;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_verification_codes
+      ADD COLUMN IF NOT EXISTS "sentTo" TEXT;
+  `);
+  console.log('   DB: phone verification ready');
 }
 
 module.exports = { ensureSchema };
