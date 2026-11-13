@@ -3,6 +3,7 @@ const request = require('supertest');
 const { createApp } = require('../src/app');
 const prisma = require('../src/lib/prisma');
 const { generateStoreKey, hashStoreKey } = require('../src/lib/storeKeys');
+const { budgetChecksIdle } = require('../src/lib/budgetAlerts');
 
 const PASSWORD = 'Nexus@2026';
 const tracked = new Set();
@@ -68,7 +69,9 @@ async function createTestStore(category = 'Supermarket') {
 
 // Delete only the users and stores this test file created (receipts/codes
 // cascade with the user; a store's receipts just lose their storeId).
+// Waits first for budget checks that store receipts started after their 201.
 async function cleanup() {
+  await budgetChecksIdle();
   if (tracked.size > 0) {
     await prisma.user.deleteMany({ where: { id: { in: [...tracked] } } });
     tracked.clear();

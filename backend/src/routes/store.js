@@ -4,6 +4,7 @@ const storeAuth = require('../middleware/storeAuth');
 const { parseStoreReceipt } = require('../lib/storeReceipt');
 const { emitToUser } = require('../lib/realtime');
 const { sendReceiptEmail } = require('../lib/mailer');
+const { checkBudgetAfterReceipt } = require('../lib/budgetAlerts');
 
 // Router factory: every createApp() gets its own router and limiters.
 // Used by the Store Simulator (public/store) with a store key.
@@ -101,6 +102,15 @@ module.exports = function storeRoutes(limiters) {
         }))
         .catch((err) => console.error('[store/receipts] email copy failed', err.message));
     }
+
+    // Budget alert (80% / 100%) after the reply: the store never learns about
+    // budgets, and a failure here can't turn the saved receipt into an error.
+    // Emitted after receipt:new, so the phone gets them in that order.
+    Promise.resolve()
+      .then(() => checkBudgetAfterReceipt({
+        id: receipt.id, userId: receipt.userId, category: receipt.category, createdAt: receipt.createdAt,
+      }))
+      .catch((err) => console.error('[store/receipts] budget check failed', err.message));
   });
 
   return router;

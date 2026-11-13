@@ -18,6 +18,8 @@ const SAFE_USER_SELECT = {
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
+  budgetAlertEmails: true,
+  weeklySummaryEmails: true,
 };
 
 function generateSerial() {
@@ -93,7 +95,8 @@ module.exports = function authRoutes(limiters) {
       const valid = await bcrypt.compare(password, user?.password ?? DUMMY);
       if (!user || !valid) return res.status(401).json({ error: 'Invalid email or password.' });
 
-      const { password: _, ...safeUser } = user;
+      // Only the SAFE_USER_SELECT fields (never the hash or internal columns).
+      const safeUser = Object.fromEntries(Object.keys(SAFE_USER_SELECT).map((k) => [k, user[k]]));
       res.json({ token: signToken(user.id), user: safeUser });
     } catch (err) {
       console.error('[login]', err);

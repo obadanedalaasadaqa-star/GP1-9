@@ -225,4 +225,102 @@ async function sendReportEmail(to, firstName, report, tz = 0) {
   });
 }
 
-module.exports = { mailProvider, isMailConfigured, sendVerificationEmail, sendReceiptEmail, sendReportEmail };
+const BUDGET_FOOTER = 'Change your budgets or turn these emails off in Nexus → Profile → Budgets & alerts.';
+
+// Budget alert at 80% or 100% (lib/budgetAlerts.js). Every dynamic value is escaped.
+async function sendBudgetAlertEmail(to, firstName, alert) {
+  const { category, level, percent, spent, limit, remaining, overBy, monthLabel } = alert;
+  const jd = (n) => `${formatAmount(n)} JD`;
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] Budget alert for ${to}: ${category} ${level}% (${formatAmount(spent)} / ${formatAmount(limit)} JD)`);
+    return;
+  }
+
+  const subject = level >= 100
+    ? `You're over your ${category} budget for ${monthLabel}`
+    : `You've used ${percent}% of your ${category} budget`;
+  const used = `${jd(spent)} of ${jd(limit)} used (${percent}%)`;
+  const left = overBy > 0 ? `Over by ${jd(overBy)}` : `${jd(remaining)} left`;
+  const color = level >= 100 ? '#F06A63' : '#D6A046';
+  await sendMail({
+    to,
+    toName: firstName,
+    subject,
+    text:
+      `Hi ${firstName},\n\n` +
+      `${category} budget, ${monthLabel}:\n${used}\n${left}\n\n${BUDGET_FOOTER}`,
+    html: card(`
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p style="margin:0 0 4px">Your <strong>${escapeHtml(category)}</strong> budget</p>
+        <p style="color:#8A9BB4;font-size:13px;margin-top:0">${escapeHtml(monthLabel)}</p>
+        <p style="font-size:26px;font-weight:bold;color:${color};margin:16px 0 4px">${escapeHtml(percent)}%</p>
+        <p style="margin:0 0 4px">${escapeHtml(used)}</p>
+        <p style="font-weight:bold;color:${color};margin:0 0 16px">${escapeHtml(left)}</p>
+        <p style="color:#8A9BB4;font-size:13px">${escapeHtml(BUDGET_FOOTER)}</p>`),
+  });
+}
+
+const WEEKLY_FOOTER = 'You get this because Weekly summary is on in Nexus → Profile.';
+
+// "+12%", "-8%", "0%" or "—" (nothing the week before).
+const weeklyChange = (p) => (p === null ? '—' : p > 0 ? `+${p}%` : `${p}%`);
+
+// Weekly summary (lib/weeklyJob.js): numbers only, no AI text. Every dynamic
+// value is escaped.
+async function sendWeeklySummaryEmail(to, firstName, summary) {
+  const jd = (n) => `${formatAmount(n)} JD`;
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] Weekly summary for ${to}: ${summary.label}, ${formatAmount(summary.total)} JD`);
+    return;
+  }
+
+  const diff = `${summary.difference > 0 ? '+' : ''}${jd(summary.difference)}`;
+  const change = `${diff} (${weeklyChange(summary.changePercent)}) vs the week before (${jd(summary.previousTotal)})`;
+  const budgetLine = (b) => `${b.category} ${formatAmount(b.spent)} / ${formatAmount(b.limit)} JD (${b.percent}%)`;
+  const textLines = [
+    `Hi ${firstName},`, '',
+    `Your Nexus week: ${summary.label}`, '',
+    `Total: ${jd(summary.total)}`,
+    `Receipts: ${summary.receipts} (average ${jd(summary.average)})`,
+    `Change: ${change}`, '',
+    'Top categories:',
+    ...summary.topCategories.map((c) => `- ${c.category}: ${jd(c.total)}`),
+    ...(summary.topStore ? ['', `Top store: ${summary.topStore.storeName} (${jd(summary.topStore.total)})`] : []),
+    ...(summary.budgets.length ? ['', `Budgets this month (${summary.month}):`, ...summary.budgets.map((b) => `- ${budgetLine(b)}`)] : []),
+    '', WEEKLY_FOOTER,
+  ];
+
+  const muted = 'color:#8A9BB4;font-size:13px';
+  const h3 = (t) => `<h3 style="margin:20px 0 8px;color:#D6A046;font-size:15px">${escapeHtml(t)}</h3>`;
+  const rows = (items) => `<table style="width:100%;border-collapse:collapse;font-size:13px">${items.map(([a, b]) =>
+    `<tr><td style="padding:4px 0;color:#E8EEF7">${a}</td><td style="padding:4px 0;text-align:right;color:#E8EEF7">${b}</td></tr>`).join('')}</table>`;
+  const budgetColor = (b) => (b.level === 'over' ? '#F06A63' : b.level === 'warning' ? '#D6A046' : '#E8EEF7');
+
+  const html = card(`
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p style="margin:0 0 4px">Your week</p>
+        <p style="${muted};margin-top:0">${escapeHtml(summary.label)}</p>
+        <p style="font-size:26px;font-weight:bold;margin:16px 0 4px">${escapeHtml(jd(summary.total))}</p>
+        <p style="${muted};margin:0">${escapeHtml(summary.receipts)} receipts · average ${escapeHtml(jd(summary.average))}</p>
+        <p style="margin:8px 0 0">${escapeHtml(change)}</p>
+        ${h3('Top categories')}
+        ${rows(summary.topCategories.map((c) => [escapeHtml(c.category), escapeHtml(jd(c.total))]))}
+        ${summary.topStore ? `${h3('Top store')}${rows([[escapeHtml(summary.topStore.storeName), escapeHtml(jd(summary.topStore.total))]])}` : ''}
+        ${summary.budgets.length ? `${h3(`Budgets this month (${summary.month})`)}${rows(summary.budgets.map((b) => [
+    escapeHtml(b.category),
+    `<span style="color:${budgetColor(b)}">${escapeHtml(`${formatAmount(b.spent)} / ${formatAmount(b.limit)} JD (${b.percent}%)`)}</span>`]))}` : ''}
+        <p style="${muted};margin-top:24px">${escapeHtml(WEEKLY_FOOTER)}</p>`);
+
+  await sendMail({
+    to,
+    toName: firstName,
+    subject: `Your Nexus week: ${summary.label}`,
+    text: textLines.join('\n'),
+    html,
+  });
+}
+
+module.exports = {
+  mailProvider, isMailConfigured, sendVerificationEmail, sendReceiptEmail, sendReportEmail,
+  sendBudgetAlertEmail, sendWeeklySummaryEmail,
+};

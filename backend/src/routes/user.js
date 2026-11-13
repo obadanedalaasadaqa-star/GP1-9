@@ -7,6 +7,8 @@ const { passwordError } = require('../lib/password');
 const { checkCode, sendEmailCode, resendWaitSeconds } = require('../lib/verification');
 const { parseBounds, shapeStats } = require('../lib/stats');
 const { queryStats } = require('../lib/spendingQueries');
+const { parseTz } = require('../lib/aiDates');
+const { latestWeek } = require('../lib/weeklySummary');
 
 const SAFE_SELECT = {
   id: true,
@@ -19,7 +21,11 @@ const SAFE_SELECT = {
   serialNumber: true,
   loyaltyPoints: true,
   createdAt: true,
+  budgetAlertEmails: true,
+  weeklySummaryEmails: true,
 };
+
+const NOTIFICATION_KEYS = ['budgetAlertEmails', 'weeklySummaryEmails', 'tzOffsetMinutes'];
 
 // Router factory: every createApp() gets its own router and limiters.
 module.exports = function userRoutes(limiters) {
@@ -191,6 +197,52 @@ module.exports = function userRoutes(limiters) {
     } catch (err) {
       console.error('[user/password]', err);
       res.status(500).json({ error: 'Failed to update password.' });
+    }
+  });
+
+  // PATCH /api/user/notifications { budgetAlertEmails?, weeklySummaryEmails?, tzOffsetMinutes? }
+  // Email settings. Does not need a verified email: the server checks that
+  // again before sending anything. Unknown keys are ignored.
+  router.patch('/notifications', limiters.budgets, async (req, res) => {
+    const body = req.body ?? {};
+    if (typeof body !== 'object' || !NOTIFICATION_KEYS.some((k) => body[k] !== undefined)) {
+      return res.status(400).json({ error: 'Nothing to update.' });
+    }
+    const data = {};
+    for (const key of ['budgetAlertEmails', 'weeklySummaryEmails']) {
+      if (body[key] === undefined) continue;
+      if (typeof body[key] !== 'boolean') {
+        return res.status(400).json({ error: `${key} must be true or false.` });
+      }
+      data[key] = body[key];
+    }
+    if (body.tzOffsetMinutes !== undefined) {
+      const tz = parseTz(body.tzOffsetMinutes);
+      if (tz.error) return res.status(400).json({ error: tz.error });
+      data.tzOffsetMinutes = tz;
+    }
+
+    try {
+      const current = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { weeklySummaryEmails: true, tzOffsetMinutes: true },
+      });
+      if (!current) return res.status(404).json({ error: 'User not found.' });
+      // Turning the weekly email on: mark the latest week as done, so the first
+      // email is about the next full week, not an instant one about last week.
+      if (data.weeklySummaryEmails === true && !current.weeklySummaryEmails) {
+        data.weeklySummarySentWeek = latestWeek(new Date(), data.tzOffsetMinutes ?? current.tzOffsetMinutes).key;
+      }
+      const user = await prisma.user.update({
+        where: { id: req.userId },
+        data,
+        select: SAFE_SELECT,
+      });
+      res.json(user);
+    } catch (err) {
+      if (err.code === 'P2025') return res.status(404).json({ error: 'User not found.' });
+      console.error('[user/notifications]', err);
+      res.status(500).json({ error: 'Failed to save settings.' });
     }
   });
 

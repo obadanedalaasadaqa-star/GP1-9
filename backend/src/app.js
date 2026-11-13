@@ -7,6 +7,7 @@ const userRoutes     = require('./routes/user');
 const receiptRoutes  = require('./routes/receipts');
 const storeRoutes    = require('./routes/store');
 const aiRoutes       = require('./routes/ai');
+const budgetRoutes   = require('./routes/budgets');
 const { makeLimiters } = require('./lib/rateLimit');
 const { getAiClient: realGetAiClient } = require('./lib/ai');
 
@@ -41,6 +42,7 @@ function createApp({ rateLimit, aiClient, aiCaps } = {}) {
   app.use('/api/receipts', receiptRoutes);
   app.use('/api/store', storeRoutes(limiters));
   app.use('/api/ai', aiRoutes(limiters, { getAiClient, caps: aiCaps }));
+  app.use('/api/budgets', budgetRoutes(limiters));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'nexus-backend', version: '1.0.0' });
@@ -58,6 +60,11 @@ function createApp({ rateLimit, aiClient, aiCaps } = {}) {
     // Broken JSON body (express.json): the client's fault, not a server error
     if (err.type === 'entity.parse.failed') {
       return res.status(400).json({ error: 'Invalid JSON body.' });
+    }
+    // Other client errors Express raises itself, e.g. a URL path with broken
+    // percent-encoding (/api/budgets/%E0).
+    if (err.status === 400 || err instanceof URIError) {
+      return res.status(400).json({ error: 'Invalid request.' });
     }
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });

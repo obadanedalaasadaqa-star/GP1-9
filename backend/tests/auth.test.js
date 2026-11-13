@@ -105,6 +105,19 @@ describe('POST /api/auth/login', () => {
     expect(res.body.user).not.toHaveProperty('password');
   });
 
+  test('register and login bodies have the email settings and never the internal columns', async () => {
+    const reg = await registerUser(app);
+    const login = await request(app).post('/api/auth/login')
+      .send({ email: reg.email, password: reg.password });
+    for (const body of [reg.user, login.body.user]) {
+      expect(body).toMatchObject({ budgetAlertEmails: true, weeklySummaryEmails: false });
+      expect(body).not.toHaveProperty('tzOffsetMinutes');
+      expect(body).not.toHaveProperty('weeklySummarySentWeek');
+      expect(body).not.toHaveProperty('password');
+    }
+    expect(Object.keys(login.body.user).sort()).toEqual(Object.keys(reg.user).sort());
+  }, SLOW);
+
   test('401 for a wrong password', async () => {
     const res = await request(app).post('/api/auth/login')
       .send({ email: user.email, password: 'Wrong@2026' });
