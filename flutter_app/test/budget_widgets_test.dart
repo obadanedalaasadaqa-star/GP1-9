@@ -50,6 +50,18 @@ void main() {
       expect(fill.widthFactor, 1.0);
     });
 
+    testWidgets('the empty track spans the full width, even at 0%', (tester) async {
+      await pump(tester, BudgetBar(status: status(50, 0)));
+      final track = tester.getSize(find.byKey(const ValueKey('budget-bar-track')));
+      expect(track.width, 360);
+      expect(track.height, 8);
+      expect(tester.getSize(find.byKey(const ValueKey('budget-bar-fill'))).width, 0);
+
+      await pump(tester, BudgetBar(status: status(50, 25)));
+      expect(tester.getSize(find.byKey(const ValueKey('budget-bar-track'))).width, 360);
+      expect(tester.getSize(find.byKey(const ValueKey('budget-bar-fill'))).width, 180);
+    });
+
     testWidgets('onTap is called', (tester) async {
       var taps = 0;
       await pump(tester, BudgetBar(status: status(50, 10), onTap: () => taps++));
