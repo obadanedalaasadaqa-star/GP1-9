@@ -19,7 +19,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _firstNameCtrl;
   late TextEditingController _lastNameCtrl;
-  late TextEditingController _phoneCtrl;
   late TextEditingController _emailCtrl;
   final _passwordCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -44,7 +43,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = context.read<AuthProvider>().user;
     _firstNameCtrl = TextEditingController(text: user?.firstName ?? '');
     _lastNameCtrl  = TextEditingController(text: user?.lastName ?? '');
-    _phoneCtrl     = TextEditingController(text: _localPhone(user?.phone));
     _emailCtrl     = TextEditingController(text: user?.email ?? '');
     // Show/hide the password field as the email is edited
     _emailCtrl.addListener(() => setState(() {}));
@@ -54,7 +52,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
-    _phoneCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _currentPwCtrl.dispose();
@@ -84,27 +81,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool get _emailChanged =>
       _emailCtrl.text.trim() != context.read<AuthProvider>().user?.email;
 
-  // "+962791234567" → "0791234567" for display and editing
-  String _localPhone(String? phone) =>
-      phone == null ? '' : phone.replaceFirst('+962', '0');
-
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final auth = context.read<AuthProvider>();
     final user = auth.user;
     final first = _firstNameCtrl.text.trim();
     final last  = _lastNameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
     final email = _emailCtrl.text.trim();
-    if (first == user?.firstName && last == user?.lastName &&
-        phone == _localPhone(user?.phone) && !_emailChanged) {
+    if (first == user?.firstName && last == user?.lastName && !_emailChanged) {
       return;
     }
 
     setState(() { _loading = true; _status = null; });
     try {
       final updated = await ApiClient.updateProfile(
-        firstName: first, lastName: last, phone: phone,
+        firstName: first, lastName: last,
         email: email,
         currentPassword: _emailChanged ? _passwordCtrl.text : null);
       final emailChanged = _emailChanged;
@@ -238,8 +229,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _row('Email', user.email,
                     textMuted: textMuted, textPrimary: textPrimary, border: border),
                   _emailStatusRow(user.emailVerified, textMuted: textMuted),
-                  _row('Phone', user.phone == null ? 'Not set' : _localPhone(user.phone),
-                    textMuted: textMuted, textPrimary: textPrimary, border: border),
                   _row('Serial Number', user.serialNumber,
                     textMuted: textMuted, textPrimary: textPrimary, border: border,
                     valueStyle: GoogleFonts.spaceGrotesk(
@@ -296,20 +285,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             )),
                           ],
                         ),
-                        const SizedBox(height: 14),
-                        _fieldLabel('Phone Number', textDim),
-                        _input(_phoneCtrl, '07X XXX XXXX',
-                          keyboard: TextInputType.phone,
-                          isDark: isDark, border: border,
-                          textPrimary: textPrimary, textMuted: textMuted,
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              // Older accounts may not have a phone yet
-                              return user.phone == null ? null : 'Phone number is required';
-                            }
-                            return isValidJordanPhone(v)
-                                ? null : 'Enter a valid mobile number (07X XXX XXXX)';
-                          }),
                         const SizedBox(height: 14),
                         _fieldLabel('Email', textDim),
                         _input(_emailCtrl, 'you@example.com',

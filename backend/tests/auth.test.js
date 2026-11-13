@@ -3,7 +3,7 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const { sendVerificationEmail } = require('./mailerMock');
 const {
-  PASSWORD, makeApp, uniqueEmail, uniquePhone, track, registerUser, cleanup,
+  PASSWORD, makeApp, uniqueEmail, track, registerUser, cleanup,
 } = require('./helpers');
 
 // Many sequential DB round trips; the default 30 s is too tight on the pooler.
@@ -15,7 +15,6 @@ function newUserBody(overrides = {}) {
   return {
     firstName: 'Test',
     lastName: 'User',
-    phone: uniquePhone(),
     email: uniqueEmail(),
     password: PASSWORD,
     ...overrides,
@@ -43,7 +42,7 @@ describe('POST /api/auth/register', () => {
     expect(calls[0][2]).toMatch(/^\d{6}$/);
   });
 
-  test.each(['firstName', 'lastName', 'phone', 'email', 'password'])(
+  test.each(['firstName', 'lastName', 'email', 'password'])(
     '400 when %s is missing', async (field) => {
       const body = newUserBody();
       delete body[field];
@@ -53,11 +52,18 @@ describe('POST /api/auth/register', () => {
     }
   );
 
-  test('400 for a non-Jordanian phone', async () => {
-    const res = await request(app).post('/api/auth/register')
-      .send(newUserBody({ phone: '0761234567' }));
+  test('the required error no longer mentions a phone', async () => {
+    const res = await request(app).post('/api/auth/register').send({});
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/Jordanian mobile number/);
+    expect(res.body.error).toBe('First name, last name, email, and password are required.');
+  });
+
+  test('201 without a phone, and no phone key on the user (a sent phone is ignored)', async () => {
+    const res = await request(app).post('/api/auth/register')
+      .send(newUserBody({ phone: '0791234567' }));
+    expect(res.status).toBe(201);
+    track(res.body.user?.id);
+    expect(res.body.user).not.toHaveProperty('phone');
   });
 
   test('400 for a weak password', async () => {
@@ -77,18 +83,6 @@ describe('POST /api/auth/register', () => {
       .send(newUserBody({ email: first.email }));
     expect(res2.status).toBe(409);
     expect(res2.body.error).toBe('Email already registered.');
-  }, SLOW);
-
-  test('409 for a phone that is already registered', async () => {
-    const first = newUserBody();
-    const res1 = await request(app).post('/api/auth/register').send(first);
-    expect(res1.status).toBe(201);
-    track(res1.body.user.id);
-
-    const res2 = await request(app).post('/api/auth/register')
-      .send(newUserBody({ phone: first.phone }));
-    expect(res2.status).toBe(409);
-    expect(res2.body.error).toBe('Phone number already registered.');
   }, SLOW);
 });
 

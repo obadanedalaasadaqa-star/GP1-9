@@ -19,7 +19,6 @@ class _AuthScreenState extends State<AuthScreen>
   final _formKey = GlobalKey<FormState>();
   final _firstName = TextEditingController();
   final _lastName  = TextEditingController();
-  final _phone     = TextEditingController();
   final _email    = TextEditingController();
   final _password = TextEditingController();
 
@@ -39,7 +38,6 @@ class _AuthScreenState extends State<AuthScreen>
     _tabs.dispose();
     _firstName.dispose();
     _lastName.dispose();
-    _phone.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
@@ -56,7 +54,6 @@ class _AuthScreenState extends State<AuthScreen>
         await auth.register(
           firstName: _firstName.text.trim(),
           lastName: _lastName.text.trim(),
-          phone: _phone.text.trim(),
           email: _email.text.trim(),
           password: _password.text,
         );
@@ -193,17 +190,6 @@ class _AuthScreenState extends State<AuthScreen>
                                       )),
                                     ],
                                   ),
-                                  const SizedBox(height: 16),
-                                  _label('Phone Number', textDim),
-                                  _field(_phone, '07X XXX XXXX',
-                                    keyboard: TextInputType.phone,
-                                    isDark: isDark, border: border,
-                                    textPrimary: textPrimary, textMuted: textMuted,
-                                    validator: (v) {
-                                      if (v == null || v.trim().isEmpty) return 'Phone number is required';
-                                      if (!isValidJordanPhone(v)) return 'Enter a valid mobile number (07X XXX XXXX)';
-                                      return null;
-                                    }),
                                   const SizedBox(height: 16),
                                 ],
                                 _label('Email', textDim),

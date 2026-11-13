@@ -146,7 +146,7 @@ describe('GET /api/ai/report', () => {
     const u = await seededUser(app);
     await getReport(u.token);
     const sent = JSON.stringify(ai.seen);
-    for (const bad of [u.email, u.user.serialNumber, u.user.id, u.user.phone]) expect(sent).not.toContain(bad);
+    for (const bad of [u.email, u.user.serialNumber, u.user.id]) expect(sent).not.toContain(bad);
     expect(ai.seen[0].messages[0].content).not.toMatch(/"id"|userId/);
   }, SLOW);
 

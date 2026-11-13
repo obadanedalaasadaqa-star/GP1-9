@@ -24,6 +24,7 @@ describe('GET /api/user/me', () => {
     expect(res.body.id).toBe(u.user.id);
     expect(res.body.email).toBe(u.email);
     expect(res.body).not.toHaveProperty('password');
+    expect(res.body).not.toHaveProperty('phone');
   });
 
   test('401 without a token', async () => {
@@ -56,10 +57,11 @@ describe('PATCH /api/user/me', () => {
     expect(res.status).toBe(400);
   });
 
-  test('400 for a bad phone', async () => {
+  test('a phone sent by an old app build is ignored', async () => {
     const res = await request(app).patch('/api/user/me').set(auth(u.token))
       .send({ firstName: 'Sara', lastName: 'Ali', phone: '12345' });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('phone');
   });
 
   test('email change: 400 without the current password', async () => {

@@ -15,7 +15,6 @@ model User {
   name          String
   firstName     String?
   lastName      String?
-  phone         String?  @unique
   emailVerified Boolean  @default(false)
   serialNumber  String   @unique
   loyaltyPoints Int      @default(0)
@@ -39,7 +38,7 @@ model User {
   @@map("nexus_users")
 }
 
-// One active code per user per type ("email" now, "phone" later)
+// One active code per user per type (only "email")
 model VerificationCode {
   id         String   @id @default(uuid())
   userId     String

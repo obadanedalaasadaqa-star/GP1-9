@@ -111,7 +111,6 @@ class ApiClient {
   static Future<({String token, User user})> register({
     required String firstName,
     required String lastName,
-    required String phone,
     required String email,
     required String password,
   }) async {
@@ -122,7 +121,6 @@ class ApiClient {
           body: jsonEncode({
             'firstName': firstName,
             'lastName': lastName,
-            'phone': phone,
             'email': email,
             'password': password,
           }),
@@ -177,7 +175,6 @@ class ApiClient {
   static Future<User> updateProfile({
     required String firstName,
     required String lastName,
-    String? phone,
     String? email,
     String? currentPassword,
   }) async {
@@ -188,7 +185,6 @@ class ApiClient {
           body: jsonEncode({
             'firstName': firstName,
             'lastName': lastName,
-            if (phone != null && phone.isNotEmpty) 'phone': phone,
             if (email != null && email.isNotEmpty) 'email': email,
             if (currentPassword != null && currentPassword.isNotEmpty)
               'currentPassword': currentPassword,

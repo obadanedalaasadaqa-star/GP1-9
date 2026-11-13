@@ -115,14 +115,12 @@ class AuthProvider extends ChangeNotifier {
   Future<void> register({
     required String firstName,
     required String lastName,
-    required String phone,
     required String email,
     required String password,
   }) async {
     final result = await ApiClient.register(
       firstName: firstName,
       lastName: lastName,
-      phone: phone,
       email: email,
       password: password,
     );

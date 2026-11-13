@@ -2,7 +2,6 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
-const { normalizeJordanPhone } = require('../lib/phone');
 const { passwordError } = require('../lib/password');
 const { checkCode, sendEmailCode, resendWaitSeconds } = require('../lib/verification');
 const { parseBounds, shapeStats } = require('../lib/stats');
@@ -16,7 +15,6 @@ const SAFE_SELECT = {
   name: true,
   firstName: true,
   lastName: true,
-  phone: true,
   emailVerified: true,
   serialNumber: true,
   loyaltyPoints: true,
@@ -47,8 +45,9 @@ module.exports = function userRoutes(limiters) {
     }
   });
 
-  // PATCH /api/user/me  — update first name, last name, phone, and email
-  // Changing the email requires the current password.
+  // PATCH /api/user/me  — update first name, last name, and email
+  // Changing the email requires the current password. Other body fields
+  // (e.g. a "phone" from an old app build) are ignored.
   router.patch('/me', async (req, res) => {
     const firstName = req.body?.firstName?.trim();
     const lastName  = req.body?.lastName?.trim();
@@ -56,14 +55,6 @@ module.exports = function userRoutes(limiters) {
       return res.status(400).json({ error: 'First and last name are required.' });
     }
     const data = { firstName, lastName, name: `${firstName} ${lastName}` };
-
-    if (req.body?.phone) {
-      const phone = normalizeJordanPhone(req.body.phone);
-      if (!phone) {
-        return res.status(400).json({ error: 'Enter a valid Jordanian mobile number (07X XXX XXXX).' });
-      }
-      data.phone = phone;
-    }
 
     try {
       const email = req.body?.email?.trim();
@@ -96,8 +87,7 @@ module.exports = function userRoutes(limiters) {
       res.json(user);
     } catch (err) {
       if (err.code === 'P2002') {
-        const field = err.meta?.target?.includes('email') ? 'Email' : 'Phone number';
-        return res.status(409).json({ error: `${field} already registered.` });
+        return res.status(409).json({ error: 'Email already registered.' });
       }
       console.error('[user/patch]', err);
       res.status(500).json({ error: 'Failed to update profile.' });

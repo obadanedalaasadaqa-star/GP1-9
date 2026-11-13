@@ -6,7 +6,7 @@ const { createApp } = require('../src/app');
 const prisma = require('../src/lib/prisma');
 const mailer = require('./mailerMock');
 const {
-  PASSWORD, makeApp, uniqueEmail, uniquePhone, track, registerUser, createTestStore, cleanup,
+  PASSWORD, makeApp, uniqueEmail, track, registerUser, createTestStore, cleanup,
 } = require('./helpers');
 
 // Users are created on the unlimited app, so the limited apps' register
@@ -155,7 +155,7 @@ describe('register limiter', () => {
   test('the 2nd register gets 429 when the limit is 1', async () => {
     const app = createApp({ rateLimit: { register: { limit: 1 } } });
     const body = () => ({
-      firstName: 'Test', lastName: 'User', phone: uniquePhone(), email: uniqueEmail(), password: PASSWORD,
+      firstName: 'Test', lastName: 'User', email: uniqueEmail(), password: PASSWORD,
     });
 
     const first = await request(app).post('/api/auth/register').send(body());

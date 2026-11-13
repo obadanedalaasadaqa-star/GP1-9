@@ -20,11 +20,6 @@ function uniqueEmail() {
   return `test_${Date.now()}${crypto.randomInt(0, 1_000_000)}@nexus.test`;
 }
 
-// A random valid Jordanian number, 079xxxxxxx.
-function uniquePhone() {
-  return `079${String(crypto.randomInt(0, 10_000_000)).padStart(7, '0')}`;
-}
-
 // Remember a user id so cleanup() deletes it.
 function track(id) {
   if (id) tracked.add(id);
@@ -36,7 +31,6 @@ async function registerUser(app = makeApp()) {
   const res = await request(app).post('/api/auth/register').send({
     firstName: 'Test',
     lastName: 'User',
-    phone: uniquePhone(),
     email,
     password: PASSWORD,
   });
@@ -84,6 +78,6 @@ async function cleanup() {
 }
 
 module.exports = {
-  PASSWORD, makeApp, uniqueEmail, uniquePhone, track, registerUser, verifyUser,
+  PASSWORD, makeApp, uniqueEmail, track, registerUser, verifyUser,
   createTestStore, cleanup,
 };
