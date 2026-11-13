@@ -8,7 +8,6 @@ import '../core/theme_provider.dart';
 import '../core/validators.dart';
 import '../widgets/budgets_alerts_card.dart';
 import '../widgets/password_meter.dart';
-import 'verify_code_screen.dart';
 import 'verify_email_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -241,8 +240,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _emailStatusRow(user.emailVerified, textMuted: textMuted),
                   _row('Phone', user.phone == null ? 'Not set' : _localPhone(user.phone),
                     textMuted: textMuted, textPrimary: textPrimary, border: border),
-                  if (user.phone != null)
-                    _phoneStatusRow(user.phoneVerified, textMuted: textMuted),
                   _row('Serial Number', user.serialNumber,
                     textMuted: textMuted, textPrimary: textPrimary, border: border,
                     valueStyle: GoogleFonts.spaceGrotesk(
@@ -471,29 +468,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ? _chip(Icons.verified_rounded, 'Verified', AppColors.mint)
               : GestureDetector(
                   onTap: () => VerifyEmailScreen.open(context),
-                  child: _chip(Icons.error_outline_rounded,
-                    'Not verified · Verify', AppColors.gold),
-                ),
-        ],
-      ),
-    ),
-    Divider(height: 1, color: AppColors.border.withValues(alpha: 0.4)),
-  ]);
-
-  // Same look as the email row; opens the SMS code screen.
-  Widget _phoneStatusRow(bool verified, {required Color textMuted}) => Column(children: [
-    Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('Phone Status', style: GoogleFonts.dmSans(
-            fontSize: 13, color: textMuted)),
-          verified
-              ? _chip(Icons.verified_rounded, 'Verified', AppColors.mint)
-              : GestureDetector(
-                  key: const ValueKey('verify-phone'),
-                  onTap: () => VerifyCodeScreen.openPhone(context),
                   child: _chip(Icons.error_outline_rounded,
                     'Not verified · Verify', AppColors.gold),
                 ),

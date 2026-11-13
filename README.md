@@ -88,49 +88,6 @@ receives each recipient's email address and first name, the verification
 codes and, for receipt copies, the store name, items and totals. Without
 Brevo, nothing leaves our server except through Gmail (local only).
 
-### Phone verification (SMS)
-
-Users confirm the number on their account with a 6-digit SMS code (Profile →
-Phone Status → Verify). `src/lib/twilioVerify.js` is the only file that talks
-to Twilio; it is picked on every request:
-
-| Set in `.env` | Mode | Where |
-|---|---|---|
-| `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_VERIFY_SERVICE_SID` | Twilio Verify sends and checks the code | Render, or local when testing real SMS |
-| nothing | Dev mode: the code is printed in the server log (`[sms:dev] Phone code for 079 *** 4567: 123456`) | Local |
-
-The startup log says which one is active (`SMS: Twilio Verify (service VA…1234)`).
-In production without the Twilio vars it prints `SMS: NOT CONFIGURED` and
-send-code answers 502 (codes are never printed in production).
-
-Twilio setup (done once by the account owner):
-1. Create a Twilio trial account. The owner's own number is verified automatically.
-2. Add each team member's number under **Phone Numbers → Verified Caller IDs**
-   (for example `<your verified number>`). A trial can only text these numbers.
-3. Create a **Verify Service** with the friendly name **Nexus** and code length 6,
-   so the SMS reads "Your Nexus verification code is: …". The server also sends
-   `CustomFriendlyName=Nexus` with every request.
-4. Under Verify → Geo permissions, enable **Jordan**.
-5. Put the three values in `backend/.env` (and in the Render environment).
-   Never type a real phone number into code, tests or this README.
-
-If Twilio refuses a number, the app shows "This number can't receive Nexus SMS
-yet: <reason>." (for example: the number isn't valid, it isn't a mobile number,
-or the demo account can only text the team's numbers). The response also has a
-`reason` field: `invalidNumber`, `notMobile`, `trialOnly`, `countryBlocked`,
-`optedOut` or `blocked`. A carrier that drops an SMS after Twilio accepted it
-can't be detected; the code screen tells the user to check the number.
-
-Limits: 3 SMS per hour and 10 code checks per 15 minutes per user, one new
-code per minute, codes valid for 10 minutes with 5 tries. Changing the number
-in Profile resets it to "Not verified", and a code sent to the old number no
-longer works. Production needs a paid Twilio account (the trial only texts
-verified numbers).
-
-**Third-party data:** when Twilio is configured, Twilio (Twilio Inc., USA)
-receives the user's phone number for each code sent. Logs only show masked
-numbers (`079 *** 4567`).
-
 ### AI (insight, Ask AI, reports)
 
 The AI page uses the Claude API (`src/lib/ai.js` is the only file that talks to it).
@@ -298,9 +255,7 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | POST | `/api/auth/register` | Register a new user |
 | POST | `/api/auth/login` | Login and receive a JWT |
 | GET | `/api/user/me` | Get current user profile |
-| PATCH | `/api/user/me` | Update first/last name, phone and email (email needs `currentPassword`) |
-| POST | `/api/user/phone/send-code` | Text a 6-digit code to the profile's number (Twilio Verify, or the log in dev mode) |
-| POST | `/api/user/phone/verify` | `{ code }` → the user with `phoneVerified: true` |
+| PATCH | `/api/user/me` | Update display name |
 | GET | `/api/user/receipts` | Get last 50 receipts |
 | GET | `/api/user/stats?bounds=…` | Spending totals per period, category and store (Trends) |
 | POST | `/api/receipts` | Create a new receipt |

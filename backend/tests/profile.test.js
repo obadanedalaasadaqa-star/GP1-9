@@ -4,7 +4,7 @@ const request = require('supertest');
 const prisma = require('../src/lib/prisma');
 const { TZ_ERROR } = require('../src/lib/aiDates');
 const { latestWeek } = require('../src/lib/weeklySummary');
-const { makeApp, uniqueEmail, uniquePhone, registerUser, cleanup } = require('./helpers');
+const { makeApp, uniqueEmail, registerUser, cleanup } = require('./helpers');
 
 // Many sequential DB round trips; the default 30 s is too tight on the pooler.
 const SLOW = 90_000;
@@ -23,7 +23,6 @@ describe('GET /api/user/me', () => {
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(u.user.id);
     expect(res.body.email).toBe(u.email);
-    expect(res.body.phoneVerified).toBe(false);
     expect(res.body).not.toHaveProperty('password');
   });
 
@@ -91,29 +90,6 @@ describe('PATCH /api/user/me', () => {
     expect(res.status).toBe(200);
     expect(res.body.email).toBe(newEmail);
     expect(res.body.emailVerified).toBe(false);
-  });
-
-  test('PR-1: a body without phone does not touch phoneVerified', async () => {
-    await prisma.user.update({ where: { id: u.user.id }, data: { phoneVerified: true } });
-    const res = await request(app).patch('/api/user/me').set(auth(u.token))
-      .send({ firstName: 'Sara', lastName: 'Ali' });
-    expect(res.status).toBe(200);
-    expect(res.body.phoneVerified).toBe(true);
-  });
-
-  test('PR-2: if expiring the phone code fails, the update still succeeds', async () => {
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    jest.spyOn(prisma.verificationCode, 'updateMany').mockRejectedValueOnce(new Error('pooler hiccup'));
-    try {
-      const res = await request(app).patch('/api/user/me').set(auth(u.token))
-        .send({ firstName: 'Sara', lastName: 'Ali', phone: uniquePhone() });
-      expect(res.status).toBe(200);
-      expect(res.body.phoneVerified).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('[user/patch] expire phone code', expect.any(Error));
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 });
 

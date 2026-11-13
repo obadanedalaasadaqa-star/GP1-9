@@ -5,8 +5,8 @@ const MIN = 60 * 1000;
 // Default limits. login only counts failed attempts. sendCode counts every
 // request that reaches it, including ones the client aborts; the route's
 // "already verified" 400 and "Please wait" 429 are answered by a precheck
-// before the limiter, so they don't use up the hourly cap (same for
-// phoneSendCode). sendCode/verifyCode and the phone ones are keyed by user (they run after authMiddleware), storeReceipts by store
+// before the limiter, so they don't use up the hourly cap. sendCode/verifyCode
+// are keyed by user (they run after authMiddleware), storeReceipts by store
 // (it runs after storeAuth), the others by IP. storeAuth only counts 401s
 // (wrong/missing store key), so a cashier who mistypes serials isn't blocked.
 const DEFAULT_LIMITS = {
@@ -18,12 +18,6 @@ const DEFAULT_LIMITS = {
                 error: 'Too many code requests. Try again later.' },
   verifyCode: { windowMs: 15 * MIN, limit: 10, byUser: true,
                 error: 'Too many attempts. Try again later.' },
-  // SMS codes (POST /api/user/phone/*), separate from the email ones. Same
-  // precheck rule as sendCode: "already verified" and the 60 s wait come first.
-  phoneSendCode:   { windowMs: 60 * MIN, limit: 3,  byUser: true,
-                     error: 'Too many SMS requests. Try again later.' },
-  phoneVerifyCode: { windowMs: 15 * MIN, limit: 10, byUser: true,
-                     error: 'Too many attempts. Try again later.' },
   storeAuth:  { windowMs: 15 * MIN, limit: 20, byUser: false, skipSuccessfulRequests: true,
                 requestWasSuccessful: (_req, res) => res.statusCode !== 401,
                 error: 'Too many wrong store keys. Try again in a few minutes.' },
@@ -73,9 +67,8 @@ function buildLimiter(name, {
 }
 
 /**
- * Returns { login, register, sendCode, verifyCode, phoneSendCode,
- * phoneVerifyCode, storeAuth, storeReceipts, aiInsight, aiChat, aiReport,
- * aiReportEmail, budgets } middlewares.
+ * Returns { login, register, sendCode, verifyCode, storeAuth, storeReceipts,
+ * aiInsight, aiChat, aiReport, aiReportEmail, budgets } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.
  */
