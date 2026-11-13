@@ -6,6 +6,7 @@ const { initRealtime } = require('./lib/realtime');
 const { ensureSchema } = require('./lib/schema');
 const { mailProvider } = require('./lib/mailer');
 const { AI_MODEL, useFallbacks } = require('./lib/ai');
+const { startWeeklyJob } = require('./lib/weeklyJob');
 
 const PORT = process.env.PORT || 3001;
 
@@ -27,6 +28,11 @@ async function start() {
     console.log(`\n🔷 Nexus Backend running on http://localhost:${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/api/health\n`);
   });
+
+  // Weekly summary emails (never started by tests, which only use createApp).
+  console.log(startWeeklyJob()
+    ? '   Weekly summary: on (Sunday 09:00 local, checked every 15 min)'
+    : '   Weekly summary: off');
 }
 
 start().catch((err) => {
