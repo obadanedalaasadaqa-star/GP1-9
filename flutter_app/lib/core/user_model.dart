@@ -10,6 +10,12 @@ class User {
   final int loyaltyPoints;
   final DateTime createdAt;
 
+  /// Email me at 80% and 100% of a budget (live alerts are always on).
+  final bool budgetAlertEmails;
+
+  /// Opt-in weekly summary email.
+  final bool weeklySummaryEmails;
+
   const User({
     required this.id,
     required this.email,
@@ -21,6 +27,8 @@ class User {
     required this.serialNumber,
     required this.loyaltyPoints,
     required this.createdAt,
+    this.budgetAlertEmails = true,
+    this.weeklySummaryEmails = false,
   });
 
   factory User.fromJson(Map<String, dynamic> j) {
@@ -38,6 +46,9 @@ class User {
       serialNumber: j['serialNumber'] as String,
       loyaltyPoints: (j['loyaltyPoints'] as num).toInt(),
       createdAt: DateTime.parse(j['createdAt'] as String),
+      // Missing in older cached profiles: the server's defaults.
+      budgetAlertEmails: j['budgetAlertEmails'] as bool? ?? true,
+      weeklySummaryEmails: j['weeklySummaryEmails'] as bool? ?? false,
     );
   }
 
@@ -52,6 +63,8 @@ class User {
     'serialNumber': serialNumber,
     'loyaltyPoints': loyaltyPoints,
     'createdAt': createdAt.toUtc().toIso8601String(),
+    'budgetAlertEmails': budgetAlertEmails,
+    'weeklySummaryEmails': weeklySummaryEmails,
   };
 
   User copyWith({
@@ -61,6 +74,8 @@ class User {
     String? phone,
     bool? emailVerified,
     int? loyaltyPoints,
+    bool? budgetAlertEmails,
+    bool? weeklySummaryEmails,
   }) =>
       User(
         id: id,
@@ -73,5 +88,7 @@ class User {
         serialNumber: serialNumber,
         loyaltyPoints: loyaltyPoints ?? this.loyaltyPoints,
         createdAt: createdAt,
+        budgetAlertEmails: budgetAlertEmails ?? this.budgetAlertEmails,
+        weeklySummaryEmails: weeklySummaryEmails ?? this.weeklySummaryEmails,
       );
 }

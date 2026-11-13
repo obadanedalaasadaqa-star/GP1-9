@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'api_client.dart';
+import 'budget_models.dart';
 import 'constants.dart';
 import 'receipt_event.dart';
 
@@ -33,6 +34,8 @@ bool isUnauthorizedError(Object? data) {
 /// `receipt:new` when a store sends this user a receipt.
 ///
 /// - [receipts]: every new receipt (the shell shows the "New receipt" sheet).
+/// - [budgetAlerts]: a store receipt took a budget to 80% or 100%
+///   (`budget:alert`, always after that receipt's `receipt:new`).
 /// - [refreshTick]: +1 when lists should reload (new receipt, reconnect, resume).
 /// - [syncs]: reconnect or resume, so the shell refreshes the user (points).
 /// - [unauthorized]: the token was refused, so the shell logs the user out.
@@ -55,6 +58,7 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
   RealtimeSocket? _socket;
 
   final _receipts = StreamController<ReceiptEvent>.broadcast();
+  final _budgetAlerts = StreamController<BudgetAlert>.broadcast();
   final _syncs = StreamController<void>.broadcast();
   final _unauthorized = StreamController<void>.broadcast();
   final _refreshTick = ValueNotifier<int>(0);
@@ -71,6 +75,7 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _resumeFallback;
 
   Stream<ReceiptEvent> get receipts => _receipts.stream;
+  Stream<BudgetAlert> get budgetAlerts => _budgetAlerts.stream;
   Stream<void> get syncs => _syncs.stream;
   Stream<void> get unauthorized => _unauthorized.stream;
   ValueListenable<int> get refreshTick => _refreshTick;
@@ -115,6 +120,7 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
     socket.on('disconnect', (reason) => _onDisconnect(socket, reason));
     socket.on('connect_error', (data) => _onConnectError(socket, data));
     socket.on('receipt:new', (data) => _onReceipt(socket, data));
+    socket.on('budget:alert', (data) => _onBudgetAlert(socket, data));
     socket.connect();
   }
 
@@ -165,6 +171,17 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
     _refreshTick.value++;
   }
 
+  // No refreshTick here: the receipt that caused it already bumped it.
+  void _onBudgetAlert(RealtimeSocket socket, dynamic data) {
+    if (!_isLive(socket)) return;
+    try {
+      final json = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+      _budgetAlerts.add(BudgetAlert.fromJson(json));
+    } catch (e) {
+      debugPrint('[realtime] bad budget:alert payload: $e');
+    }
+  }
+
   void _sync() {
     _refreshTick.value++;
     _syncs.add(null);
@@ -205,6 +222,7 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
     _socket?.dispose();
     _socket = null;
     _receipts.close();
+    _budgetAlerts.close();
     _syncs.close();
     _unauthorized.close();
     _refreshTick.dispose();

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_models.dart';
+import 'budget_models.dart';
 import 'constants.dart';
 import 'offline_cache.dart';
 import 'receipt_model.dart';
@@ -36,6 +37,9 @@ typedef InsightResult = ({Insight insight, bool offline, bool stale, DateTime? s
 /// A spending report plus where it came from (same rules as [ReceiptsResult]).
 typedef ReportResult = ({SpendingReport report, bool offline, DateTime? savedAt});
 
+/// Monthly budgets plus where they came from (same rules as [ReceiptsResult]).
+typedef BudgetsResult = ({BudgetList list, bool offline, DateTime? savedAt});
+
 class ApiException implements Exception {
   final String message;
   final int? statusCode;
@@ -50,6 +54,10 @@ class ApiException implements Exception {
 
 class ApiClient {
   static const _tokenKey = 'nexus_token';
+
+  /// The phone's offset in minutes east of UTC, sent so the server's "this
+  /// month" matches the phone's.
+  static int get tzOffsetMinutes => DateTime.now().timeZoneOffset.inMinutes;
 
   // ── Token storage ──────────────────────────────────────────────
   static Future<void> saveToken(String token) async {
@@ -240,6 +248,103 @@ class ApiClient {
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     _parse(res);
+  }
+
+  /// Email settings. Always sends the phone's time zone too.
+  static Future<User> updateNotifications({bool? budgetAlertEmails, bool? weeklySummaryEmails}) async {
+    final res = await http
+        .patch(
+          Uri.parse('${AppConfig.baseUrl}/user/notifications'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({
+            'budgetAlertEmails': ?budgetAlertEmails,
+            'weeklySummaryEmails': ?weeklySummaryEmails,
+            'tzOffsetMinutes': tzOffsetMinutes,
+          }),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    return User.fromJson(_parse(res));
+  }
+
+  // ── Budgets ────────────────────────────────────────────────────
+  /// This month's budgets (in the phone's time zone) and the picker's categories.
+  static Future<BudgetList> getBudgets() async {
+    final uri = Uri.parse('${AppConfig.baseUrl}/budgets').replace(
+      queryParameters: {'tzOffsetMinutes': '$tzOffsetMinutes'},
+    );
+    final res = await http
+        .get(uri, headers: await _headers(auth: true))
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    return BudgetList.fromJson(_parse(res));
+  }
+
+  /// [getBudgets] that saves what it gets on the phone, and falls back to the
+  /// saved list when the server can't be reached. A real answer from our
+  /// server (401, 400, ...) is still thrown, never hidden by the cache.
+  static Future<BudgetsResult> loadBudgets() async {
+    try {
+      final list = await getBudgets();
+      await _saveBudgetsQuietly(list);
+      return (list: list, offline: false, savedAt: null);
+    } on ApiException catch (e) {
+      if (e.fromServer) rethrow;
+      return _budgetsFromCache();
+    } catch (_) {
+      return _budgetsFromCache();
+    }
+  }
+
+  static Future<BudgetsResult> _budgetsFromCache() async {
+    final cached = await OfflineCache.loadBudgets();
+    if (cached == null) throw ApiException(_kUnreachable);
+    return (list: cached, offline: true, savedAt: await OfflineCache.budgetsSavedAt());
+  }
+
+  static Future<void> _saveBudgetsQuietly(BudgetList list) async {
+    try {
+      await OfflineCache.saveBudgets(list);
+    } catch (_) {
+      // Saving is best effort: the fresh list is still shown.
+    }
+  }
+
+  /// Create or change the budget of [category]. Returns the fresh list.
+  static Future<BudgetList> saveBudget(String category, double limit) async {
+    final res = await http
+        .put(
+          Uri.parse('${AppConfig.baseUrl}/budgets'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({'category': category, 'limit': limit, 'tzOffsetMinutes': tzOffsetMinutes}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    final list = BudgetList.fromJson(_parse(res));
+    await _saveBudgetsQuietly(list);
+    return list;
+  }
+
+  /// Remove the budget of [category]. Returns the fresh list.
+  static Future<BudgetList> deleteBudget(String category) async {
+    final uri = Uri.parse('${AppConfig.baseUrl}/budgets/${Uri.encodeComponent(category)}').replace(
+      queryParameters: {'tzOffsetMinutes': '$tzOffsetMinutes'},
+    );
+    final res = await http
+        .delete(uri, headers: await _headers(auth: true))
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    final list = BudgetList.fromJson(_parse(res));
+    await _saveBudgetsQuietly(list);
+    return list;
   }
 
   // ── Receipts ───────────────────────────────────────────────────

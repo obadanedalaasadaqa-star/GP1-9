@@ -6,6 +6,7 @@ import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/theme_provider.dart';
 import '../core/validators.dart';
+import '../widgets/budgets_alerts_card.dart';
 import '../widgets/password_meter.dart';
 import 'verify_email_screen.dart';
 
@@ -223,6 +224,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 14),
+
+              // Budgets & alerts card (budgets link + email switches)
+              const BudgetsAlertsCard(),
               const SizedBox(height: 14),
 
               // Account info card

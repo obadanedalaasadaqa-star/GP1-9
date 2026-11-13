@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nexus_app/core/budget_models.dart';
 import 'package:nexus_app/core/realtime_service.dart';
 import 'package:nexus_app/core/receipt_event.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,6 +50,19 @@ final _receiptPayload = <String, dynamic>{
   },
   'pointsEarned': 12,
   'loyaltyPoints': 140,
+};
+
+final _alertPayload = <String, dynamic>{
+  'receiptId': 'r1',
+  'category': 'Food',
+  'level': 80,
+  'percent': 85,
+  'spent': 8.5,
+  'limit': 10,
+  'remaining': 1.5,
+  'overBy': 0,
+  'month': '2026-11',
+  'monthLabel': 'November 2026',
 };
 
 void main() {
@@ -107,6 +121,47 @@ void main() {
     expect(events.single.pointsEarned, 12);
     expect(events.single.loyaltyPoints, 140);
     expect(service.refreshTick.value, 1);
+  });
+
+  group('budget:alert', () {
+    test('arrives on budgetAlerts and does not touch refreshTick', () async {
+      await service.start();
+      final alerts = <BudgetAlert>[];
+      service.budgetAlerts.listen(alerts.add);
+      socket().fire('connect');
+
+      socket().fire('budget:alert', _alertPayload);
+      await flush();
+      expect(alerts, hasLength(1));
+      expect(alerts.single.receiptId, 'r1');
+      expect(alerts.single.level, 80);
+      expect(alerts.single.title, 'Food budget: 85% used');
+      expect(service.refreshTick.value, 0);
+    });
+
+    test('a bad payload is ignored', () async {
+      await service.start();
+      final alerts = <BudgetAlert>[];
+      service.budgetAlerts.listen(alerts.add);
+      socket().fire('budget:alert', {'category': 'Food'});
+      socket().fire('budget:alert', 'nonsense');
+      await flush();
+      expect(alerts, isEmpty);
+    });
+
+    test('alerts from an old socket are ignored', () async {
+      await service.start();
+      final old = socket();
+      final alerts = <BudgetAlert>[];
+      service.budgetAlerts.listen(alerts.add);
+      await service.start(); // replaces the socket
+      old.fire('budget:alert', _alertPayload);
+      await flush();
+      expect(alerts, isEmpty);
+      sockets.last.fire('budget:alert', _alertPayload);
+      await flush();
+      expect(alerts, hasLength(1));
+    });
   });
 
   test('the first connect does not refresh; a reconnect refreshes and syncs', () async {

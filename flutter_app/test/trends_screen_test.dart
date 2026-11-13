@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:nexus_app/core/budget_models.dart';
 import 'package:nexus_app/core/offline_cache.dart';
 import 'package:nexus_app/core/stats_model.dart';
 import 'package:nexus_app/core/theme_provider.dart';
@@ -14,6 +15,8 @@ import 'package:nexus_app/core/trends.dart';
 import 'package:nexus_app/screens/trends_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/budget_fixtures.dart';
 
 const _abbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -41,12 +44,16 @@ Map<String, dynamic> statsJson(List<DateTime> bounds,
   return SpendingStats(periods).toJson();
 }
 
-/// Answers /user/stats for whatever bounds the screen sent.
+/// Answers /user/stats for whatever bounds the screen sent, and /budgets
+/// ([budgets], none by default).
 Future<http.Response> Function(http.Request) online(
-        {double current = 110, bool empty = false}) =>
+        {double current = 110, bool empty = false, List<Map<String, dynamic>> budgets = const []}) =>
     (req) async {
       if (req.url.path.endsWith('/ai/insight')) {
         return http.Response('{"status":"not_enough_data","receiptCount":0,"minReceipts":3}', 200);
+      }
+      if (req.url.path.endsWith('/budgets')) {
+        return http.Response(jsonEncode(budgetListJson(budgets: budgets)), 200);
       }
       final bounds = req.url.queryParameters['bounds']!.split(',').map(DateTime.parse).toList();
       return http.Response(jsonEncode(statsJson(bounds, current: current, empty: empty)), 200);
@@ -203,5 +210,68 @@ void main() {
       await tester.pumpAndSettle();
     });
     expect(find.text('1.21 JD'), findsOneWidget);
+  });
+
+  group('budgets card', () {
+    testWidgets('bars for this month, with an Edit link', (tester) async {
+      handler = online(budgets: [budgetJson('Food', 50, 60), budgetJson('Supermarket', 100, 50)]);
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('Budgets'), findsOneWidget);
+      expect(find.text('Edit'), findsOneWidget);
+      // The Food bar matches the Food line of "By category" (60 JD).
+      expect(find.text('60.00 / 50.00 JD'), findsOneWidget);
+      expect(find.text('Over by 10.00 JD'), findsOneWidget);
+      expect(find.text('50.00 / 100.00 JD'), findsOneWidget);
+    });
+
+    testWidgets('no budgets: "Set monthly budgets"', (tester) async {
+      handler = online();
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('Set monthly budgets'), findsOneWidget);
+      expect(find.text('Budgets'), findsNothing);
+    });
+
+    testWidgets('/budgets fails: the card is hidden and the stats still show', (tester) async {
+      final stats = online();
+      handler = (req) async => req.url.path.endsWith('/budgets')
+          ? http.Response(jsonEncode({'error': 'Failed to load budgets.'}), 500)
+          : stats(req);
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('110.00 JD'), findsOneWidget);
+      expect(find.text('Set monthly budgets'), findsNothing);
+      expect(find.text('Budgets'), findsNothing);
+      expect(find.text('Failed to load budgets.'), findsNothing); // no SnackBar either
+    });
+
+    testWidgets('offline: saved bars from this month show; a list from another month does not', (tester) async {
+      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
+      await OfflineCache.saveBudgets(BudgetList.fromJson(
+          budgetListJson(budgets: [budgetJson('Food', 50, 20)])));
+      handler = noInternet;
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+
+      await OfflineCache.saveBudgets(BudgetList.fromJson(
+          budgetListJson(budgets: [budgetJson('Food', 50, 20)], month: '2000-01')));
+      await run(() async {
+        await tester.tap(find.byIcon(Icons.refresh_rounded));
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsNothing);
+      expect(find.text('Set monthly budgets'), findsNothing);
+      expect(find.text('110.00 JD'), findsOneWidget);
+    });
   });
 }
