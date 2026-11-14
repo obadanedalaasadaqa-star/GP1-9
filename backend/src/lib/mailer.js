@@ -113,6 +113,31 @@ async function sendVerificationEmail(to, firstName, code) {
   });
 }
 
+// Two-step sign-in code (routes/auth.js /login/send-code). Same fields as the
+// verification email; every dynamic value is escaped.
+async function sendLoginCodeEmail(to, firstName, code) {
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] Sign-in code for ${to}: ${code}`);
+    return;
+  }
+
+  await sendMail({
+    to,
+    toName: firstName,
+    subject: `${code} is your Nexus sign-in code`,
+    text:
+      `Hi ${firstName},\n\n` +
+      `Someone (hopefully you) is signing in to Nexus. Your sign-in code is: ${code}\n\n` +
+      `It expires in 10 minutes. If this wasn't you, change your password in the Nexus app.`,
+    html: card(`
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Someone (hopefully you) is signing in to Nexus. Your sign-in code is:</p>
+        <p style="font-size:34px;font-weight:bold;letter-spacing:10px;color:#63D0C3;margin:16px 0">${escapeHtml(code)}</p>
+        <p style="color:#8A9BB4;font-size:13px">It expires in 10 minutes.
+          If this wasn't you, change your password in the Nexus app.</p>`),
+  });
+}
+
 // Copy of a receipt a store sent. items are the saved strings ("Milk x2").
 async function sendReceiptEmail(to, firstName, { storeName, items, totalAmount, pointsEarned, createdAt }) {
   const total = `${Number(totalAmount).toFixed(2)} JD`;
@@ -321,6 +346,6 @@ async function sendWeeklySummaryEmail(to, firstName, summary) {
 }
 
 module.exports = {
-  mailProvider, isMailConfigured, sendVerificationEmail, sendReceiptEmail, sendReportEmail,
+  mailProvider, isMailConfigured, sendVerificationEmail, sendLoginCodeEmail, sendReceiptEmail, sendReportEmail,
   sendBudgetAlertEmail, sendWeeklySummaryEmail,
 };

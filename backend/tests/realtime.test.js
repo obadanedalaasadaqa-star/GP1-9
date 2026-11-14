@@ -6,6 +6,7 @@ const request = require('supertest');
 const { io: connectClient } = require('socket.io-client');
 const { createApp } = require('../src/app');
 const { initRealtime, closeRealtime } = require('../src/lib/realtime');
+const { signChallenge } = require('../src/lib/token');
 const { registerUser, createTestStore, cleanup } = require('./helpers');
 
 // Many DB round trips per test; the default 30 s is too tight on the pooler.
@@ -107,6 +108,7 @@ test.each([
   ['a token signed with another secret', jwt.sign({ userId: 'x' }, 'other-secret')],
   ['a token without a userId', jwt.sign({ sub: 'x' }, process.env.JWT_SECRET)],
   ['a token with an empty userId', jwt.sign({ userId: '' }, process.env.JWT_SECRET)],
+  ['a sign-in challenge token', signChallenge({ id: 'x', password: 'hash' })],
   ['no token', undefined],
 ])('%s gets connect_error unauthorized', async (_label, token) => {
   const { err } = await connect(token, { waitFor: 'error' });

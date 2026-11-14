@@ -198,6 +198,45 @@ same `[from, to)` rule as `/api/user/stats`, so the bars match Trends.
 same mail provider as receipt copies (Brevo on Render, Gmail locally) and
 contain category and store names, budgets, amounts spent and dates.
 
+### Two-step sign-in (opt-in, email codes)
+
+Off for everyone by default. Each user turns it on in Profile → **Sign-in
+security → Two-step sign-in**.
+
+- **Turning it on needs a verified email** (the switch is disabled with a
+  "Verify" link until then; the server answers 403). No password is needed.
+- **Turning it off needs the current password** (400 without it, 401 if wrong).
+- **Changing the email turns it off** (the new address is unverified). Verify the
+  new address and turn it on again.
+- **How it works:** for a user with it on, a correct email and password on
+  `POST /api/auth/login` returns `{ twoFactorRequired: true, challengeToken,
+  method: 'email', expiresInSeconds: 600 }` instead of a session. The app's code
+  screen asks for a code (`/login/send-code`) and sends it back
+  (`/login/verify`), which returns the normal `{ token, user }`. Codes last 10
+  minutes, allow 5 tries and can be resent once a minute. The challenge only
+  works on these two routes (it is signed with its own key), expires after 10
+  minutes, and a password change voids it. Signing in with a code does not
+  change `emailVerified`. Users with it off log in exactly as before.
+- **Dev mode:** without mail settings the code is printed in the server log:
+  `[mail:dev] Sign-in code for <email>: 123456`.
+- **Emergency switch:** `LOGIN_2FA=off` in `.env` (or on Render) turns it off for
+  everyone at once (e.g. during a mail outage); the startup log says
+  `Login 2FA: OFF for everyone`. Each user's setting is kept, so the Profile
+  switch still shows "on" and its text still says a code is emailed, but no code
+  is asked until the variable is removed, then codes resume.
+- **Rate limits:** the `login` limiter only counts failed attempts. A correct
+  password for a 2FA user returns a 200 challenge, which is not limited per IP;
+  this is safe because `/login` sends no email and issues no session. Code sends
+  are capped per user by `loginSendCode` (5 an hour, plus the 60 s wait) and
+  checks by `loginVerifyCode` (10 per 15 min). `PATCH /api/user/security` has
+  its own `security` limiter (10 per 15 min per user).
+- **Locked out** (2FA on, no access to the inbox): turn it off in Profile while
+  still logged in, set `LOGIN_2FA=off`, or set that user's `"loginTwoFactor"` to
+  false in the DB.
+
+**Third-party data:** sign-in codes go through the same mail provider as the
+verification email (address, first name and the code).
+
 ---
 
 ## 2 — Flutter App Setup
@@ -253,9 +292,12 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | Method | Route | Description |
 |---|---|---|
 | POST | `/api/auth/register` | Register a new user |
-| POST | `/api/auth/login` | Login and receive a JWT |
+| POST | `/api/auth/login` | Login: `{ token, user }`, or a sign-in challenge `{ twoFactorRequired, challengeToken, method, expiresInSeconds }` when two-step sign-in is on |
+| POST | `/api/auth/login/send-code` | `{ challengeToken }`: email a sign-in code |
+| POST | `/api/auth/login/verify` | `{ challengeToken, code }` → `{ token, user }` |
 | GET | `/api/user/me` | Get current user profile |
-| PATCH | `/api/user/me` | Update display name |
+| PATCH | `/api/user/me` | Update first/last name and email (a new email needs `currentPassword`) |
+| PATCH | `/api/user/security` | `{ loginTwoFactor, currentPassword? }` → the user (on needs a verified email, off needs the password) |
 | GET | `/api/user/receipts` | Get last 50 receipts |
 | GET | `/api/user/stats?bounds=…` | Spending totals per period, category and store (Trends) |
 | POST | `/api/receipts` | Create a new receipt |

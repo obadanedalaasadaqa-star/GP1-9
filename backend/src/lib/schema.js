@@ -191,6 +191,14 @@ async function ensureSchema() {
     );
   `);
   console.log('   DB: nexus_budget_alerts table ready');
+
+  // Two-step sign-in (opt-in, off for everyone by default). Only turned on with
+  // a verified email; an email change turns it off again.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "loginTwoFactor" BOOLEAN NOT NULL DEFAULT false;
+  `);
+  console.log('   DB: nexus_users loginTwoFactor column ready');
 }
 
 module.exports = { ensureSchema };

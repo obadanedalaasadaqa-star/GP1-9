@@ -7,9 +7,15 @@ const sentReceipts = [];
 const sentReports = [];
 const sentBudgetAlerts = [];
 const sentWeekly = [];
+const sentLogin = [];
 
 const sendVerificationEmail = jest.fn(async (to, firstName, code) => {
   sent.push({ to, firstName, code });
+});
+
+// Two-step sign-in codes (POST /api/auth/login/send-code).
+const sendLoginCodeEmail = jest.fn(async (to, firstName, code) => {
+  sentLogin.push({ to, firstName, code });
 });
 
 // Returns a promise like the real one: the store route calls .catch() on it.
@@ -40,10 +46,20 @@ function lastCodeFor(email) {
   return undefined;
 }
 
+// Last sign-in code sent to [email], or undefined.
+function lastLoginCodeFor(email) {
+  for (let i = sentLogin.length - 1; i >= 0; i--) {
+    if (sentLogin[i].to === email) return sentLogin[i].code;
+  }
+  return undefined;
+}
+
 module.exports = {
   mailProvider: () => null,
   isMailConfigured: () => false,
   sendVerificationEmail,
+  sendLoginCodeEmail,
+  sentLogin,
   sendReceiptEmail,
   sentReceipts,
   sendReportEmail,
@@ -53,4 +69,5 @@ module.exports = {
   sendWeeklySummaryEmail,
   sentWeekly,
   lastCodeFor,
+  lastLoginCodeFor,
 };

@@ -8,7 +8,9 @@ let gmailSend;
 let realFetch;
 
 function loadMailer(env) {
-  for (const name of MAIL_VARS) delete process.env[name];
+  // '' instead of delete (same rule as tests/env.js): loading Prisma later
+  // would refill a deleted variable from backend/.env.
+  for (const name of MAIL_VARS) process.env[name] = '';
   Object.assign(process.env, env);
   jest.resetModules();
   const nodemailer = require('nodemailer');
@@ -29,8 +31,7 @@ beforeAll(() => {
 });
 afterAll(() => {
   for (const name of MAIL_VARS) {
-    if (saved[name] === undefined) delete process.env[name];
-    else process.env[name] = saved[name];
+    process.env[name] = saved[name] ?? '';
   }
   global.fetch = realFetch;
 });
@@ -59,6 +60,8 @@ describe('provider choice', () => {
 
   test('dev mode when nothing is set: logs [mail:dev] and sends nothing', async () => {
     const mailer = loadMailer({});
+    // Cleared to '' (not deleted), so a later Prisma load cannot refill them.
+    for (const name of MAIL_VARS) expect(process.env[name]).toBe('');
     expect(mailer.mailProvider()).toBeNull();
     expect(mailer.isMailConfigured()).toBe(false);
     await mailer.sendVerificationEmail('a@example.com', 'Sara', '123456');
@@ -134,6 +137,28 @@ describe('escaping', () => {
     expect(htmlContent).not.toContain('<a href="x">');
     // The plain-text part is unchanged.
     expect(textContent).toContain('Hi <a href="x">win</a>,');
+  });
+});
+
+describe('sendLoginCodeEmail', () => {
+  test('dev mode prints the sign-in code line and sends nothing', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendLoginCodeEmail('a@example.com', 'Sara', '654321');
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Sign-in code for a@example.com: 654321');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(gmailSend).not.toHaveBeenCalled();
+  });
+
+  test('Brevo: sign-in subject, code in both parts, first name escaped', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendLoginCodeEmail('a@example.com', '<b>Sara</b>', '654321');
+    const body = lastBrevoBody();
+    expect(body.subject).toBe('654321 is your Nexus sign-in code');
+    expect(body.subject).toContain('Nexus sign-in code');
+    expect(body.textContent).toContain('Your sign-in code is: 654321');
+    expect(body.htmlContent).toContain('654321');
+    expect(body.htmlContent).toContain('&lt;b&gt;Sara&lt;/b&gt;');
+    expect(body.htmlContent).not.toContain('<b>Sara</b>');
   });
 });
 

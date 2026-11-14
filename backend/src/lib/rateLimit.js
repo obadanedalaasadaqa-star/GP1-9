@@ -6,7 +6,9 @@ const MIN = 60 * 1000;
 // request that reaches it, including ones the client aborts; the route's
 // "already verified" 400 and "Please wait" 429 are answered by a precheck
 // before the limiter, so they don't use up the hourly cap. sendCode/verifyCode
-// are keyed by user (they run after authMiddleware), storeReceipts by store
+// are keyed by user (they run after authMiddleware), loginSendCode/
+// loginVerifyCode by the user of the sign-in challenge (they run after
+// loginChallenge), security by user, storeReceipts by store
 // (it runs after storeAuth), the others by IP. storeAuth only counts 401s
 // (wrong/missing store key), so a cashier who mistypes serials isn't blocked.
 const DEFAULT_LIMITS = {
@@ -18,6 +20,17 @@ const DEFAULT_LIMITS = {
                 error: 'Too many code requests. Try again later.' },
   verifyCode: { windowMs: 15 * MIN, limit: 10, byUser: true,
                 error: 'Too many attempts. Try again later.' },
+  // Two-step sign-in. A correct password for a 2FA user is a 200 challenge (not
+  // counted by login), so code sends and checks are capped per user here:
+  // at most 5 codes an hour x 5 tries = 25 guesses an hour.
+  loginSendCode:   { windowMs: 60 * MIN, limit: 5,  byUser: true,
+                     error: 'Too many sign-in codes. Try again later.' },
+  loginVerifyCode: { windowMs: 15 * MIN, limit: 10, byUser: true,
+                     error: 'Too many attempts. Try again later.' },
+  // PATCH /api/user/security. Counts every request, so it also limits password
+  // guessing on the turn-off branch.
+  security:        { windowMs: 15 * MIN, limit: 10, byUser: true,
+                     error: 'Too many attempts. Try again later.' },
   storeAuth:  { windowMs: 15 * MIN, limit: 20, byUser: false, skipSuccessfulRequests: true,
                 requestWasSuccessful: (_req, res) => res.statusCode !== 401,
                 error: 'Too many wrong store keys. Try again in a few minutes.' },
@@ -67,8 +80,9 @@ function buildLimiter(name, {
 }
 
 /**
- * Returns { login, register, sendCode, verifyCode, storeAuth, storeReceipts,
- * aiInsight, aiChat, aiReport, aiReportEmail, budgets } middlewares.
+ * Returns { login, register, sendCode, verifyCode, loginSendCode,
+ * loginVerifyCode, security, storeAuth, storeReceipts, aiInsight, aiChat,
+ * aiReport, aiReportEmail, budgets } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.
  */

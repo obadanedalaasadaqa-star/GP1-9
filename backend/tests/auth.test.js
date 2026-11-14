@@ -42,6 +42,13 @@ describe('POST /api/auth/register', () => {
     expect(calls[0][2]).toMatch(/^\d{6}$/);
   });
 
+  test('a new user has two-step sign-in off (loginTwoFactor: false)', async () => {
+    const res = await request(app).post('/api/auth/register').send(newUserBody());
+    expect(res.status).toBe(201);
+    track(res.body.user?.id);
+    expect(res.body.user.loginTwoFactor).toBe(false);
+  });
+
   test.each(['firstName', 'lastName', 'email', 'password'])(
     '400 when %s is missing', async (field) => {
       const body = newUserBody();
@@ -51,6 +58,14 @@ describe('POST /api/auth/register', () => {
       expect(res.body.error).toMatch(/required/);
     }
   );
+
+  test('400 (not a hang) for a non-string first name or email', async () => {
+    for (const over of [{ firstName: 5 }, { email: ['a@nexus.test'] }]) {
+      const res = await request(app).post('/api/auth/register').send(newUserBody(over));
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('First name, last name, email, and password are required.');
+    }
+  });
 
   test('the required error no longer mentions a phone', async () => {
     const res = await request(app).post('/api/auth/register').send({});
@@ -124,6 +139,15 @@ describe('POST /api/auth/login', () => {
       .send({ email: uniqueEmail(), password: PASSWORD });
     expect(res.status).toBe(401);
     expect(res.body.error).toBe('Invalid email or password.');
+  });
+
+  test('400 (not 500) for non-string email or password', async () => {
+    const res1 = await request(app).post('/api/auth/login').send({ email: {}, password: PASSWORD });
+    const res2 = await request(app).post('/api/auth/login').send({ email: user.email, password: 12345678 });
+    for (const res of [res1, res2]) {
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Email and password are required.');
+    }
   });
 
   test('400 when email or password is missing', async () => {

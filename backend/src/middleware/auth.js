@@ -1,6 +1,4 @@
-const jwt = require('jsonwebtoken');
-
-const hasUserId = (decoded) => typeof decoded?.userId === 'string' && decoded.userId.length > 0;
+const { hasUserId, verifySession } = require('../lib/token');
 
 module.exports = function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -8,17 +6,12 @@ module.exports = function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized — no token' });
   }
 
-  const token = authHeader.slice(7);
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Only session tokens carry a userId. Without this check req.userId would
-    // be undefined, and Prisma drops an undefined filter (all users' rows).
-    if (!hasUserId(decoded)) throw new Error('no userId');
-    req.userId = decoded.userId;
-    next();
-  } catch {
-    res.status(401).json({ error: 'Unauthorized — invalid token' });
-  }
+  // verifySession only accepts HS256 session tokens with a non-empty userId
+  // (never a sign-in challenge), and never throws.
+  const s = verifySession(authHeader.slice(7));
+  if (!s) return res.status(401).json({ error: 'Unauthorized — invalid token' });
+  req.userId = s.userId;
+  next();
 };
 
 module.exports.hasUserId = hasUserId;

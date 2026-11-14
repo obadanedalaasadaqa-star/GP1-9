@@ -26,6 +26,8 @@ model User {
   weeklySummaryEmails   Boolean @default(false)
   tzOffsetMinutes       Int     @default(180)
   weeklySummarySentWeek String?
+  // Two-step sign-in (opt-in). Only turned on with a verified email.
+  loginTwoFactor        Boolean @default(false)
 
   receipts          Receipt[]
   verificationCodes VerificationCode[]
@@ -38,7 +40,7 @@ model User {
   @@map("nexus_users")
 }
 
-// One active code per user per type (only "email")
+// One active code per user per type ("email" or "login")
 model VerificationCode {
   id         String   @id @default(uuid())
   userId     String

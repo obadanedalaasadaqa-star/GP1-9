@@ -52,3 +52,8 @@ test('an expired session token gives 401', () => {
 test('a token signed with another secret gives 401', () => {
   expectRejected(run(jwt.sign({ userId: 'user-1' }, 'another-secret')));
 });
+
+test('a sign-in challenge token gives 401', () => {
+  const { signChallenge } = require('../../src/lib/token');
+  expectRejected(run(signChallenge({ id: 'user-1', password: 'hash' })));
+});

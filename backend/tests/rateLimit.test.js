@@ -151,6 +151,67 @@ describe('sendCode limiter', () => {
   }, SLOW);
 });
 
+describe('two-step sign-in limiters (default limits)', () => {
+  let t1, t2;
+  // Users with a verified email and two-step sign-in on (set in the DB).
+  const twoFactorUser = async () => {
+    const u = await registerUser(makeApp());
+    await prisma.user.update({ where: { id: u.user.id }, data: { emailVerified: true, loginTwoFactor: true } });
+    return u;
+  };
+  const challengeFor = async (app, u) => (await login(app, u.email, u.password)).body.challengeToken;
+  const allowLoginResend = (u) => prisma.verificationCode.updateMany({
+    where: { userId: u.user.id, type: 'login' },
+    data: { lastSentAt: new Date(Date.now() - 2 * 60 * 1000) },
+  });
+
+  beforeAll(async () => {
+    t1 = await twoFactorUser();
+    t2 = await twoFactorUser();
+  }, SLOW);
+
+  test('loginSendCode blocks the 6th send per user with a JSON 429', async () => {
+    const app = createApp();
+    const c1 = await challengeFor(app, t1);
+    const send = (c) => request(app).post('/api/auth/login/send-code').send({ challengeToken: c });
+    for (let i = 0; i < 5; i++) {
+      await allowLoginResend(t1);
+      expect((await send(c1)).status).toBe(200);
+    }
+    await allowLoginResend(t1);
+    const blocked = await send(c1);
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers['content-type']).toMatch(/json/);
+    expect(blocked.body.error).toBe('Too many sign-in codes. Try again later.');
+    expect(blocked.body.waitSeconds).toBeUndefined();
+
+    // Same IP, another user: still allowed.
+    expect((await send(await challengeFor(app, t2))).status).toBe(200);
+  }, SLOW * 2);
+
+  test('loginVerifyCode blocks the 11th check per user', async () => {
+    const app = createApp();
+    const c1 = await challengeFor(app, t1);
+    const verify = (c) => request(app).post('/api/auth/login/verify').send({ challengeToken: c, code: '12a' });
+    for (let i = 0; i < 10; i++) expect((await verify(c1)).status).toBe(400);
+    const blocked = await verify(c1);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe('Too many attempts. Try again later.');
+    expect((await verify(await challengeFor(app, t2))).status).toBe(400);
+  }, SLOW);
+
+  test('S-8: security blocks the 11th PATCH /api/user/security per user', async () => {
+    const app = createApp();
+    const turnOff = (u) => request(app).patch('/api/user/security').set(auth(u.token))
+      .send({ loginTwoFactor: false, currentPassword: 'Wrong@2026' });
+    for (let i = 0; i < 10; i++) expect((await turnOff(t1)).status).toBe(401);
+    const blocked = await turnOff(t1);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe('Too many attempts. Try again later.');
+    expect((await turnOff(t2)).status).toBe(401);
+  }, SLOW * 2);
+});
+
 describe('register limiter', () => {
   test('the 2nd register gets 429 when the limit is 1', async () => {
     const app = createApp({ rateLimit: { register: { limit: 1 } } });

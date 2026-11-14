@@ -21,6 +21,7 @@ const SAFE_SELECT = {
   createdAt: true,
   budgetAlertEmails: true,
   weeklySummaryEmails: true,
+  loginTwoFactor: true,
 };
 
 const NOTIFICATION_KEYS = ['budgetAlertEmails', 'weeklySummaryEmails', 'tzOffsetMinutes'];
@@ -75,6 +76,9 @@ module.exports = function userRoutes(limiters) {
           }
           data.email = email;
           data.emailVerified = false; // the new address must be verified again
+          // Two-step sign-in needs a verified email, so it goes off too (a
+          // typo in the new address can't lock the user out).
+          data.loginTwoFactor = false;
         }
       }
 
@@ -140,7 +144,7 @@ module.exports = function userRoutes(limiters) {
   // POST /api/user/email/verify — confirm the email with the 6-digit code
   router.post('/email/verify', limiters.verifyCode, async (req, res) => {
     const code = req.body?.code;
-    if (!code || !/^\d{6}$/.test(String(code).trim())) {
+    if ((typeof code !== 'string' && typeof code !== 'number') || !/^\d{6}$/.test(String(code).trim())) {
       return res.status(400).json({ error: 'Enter the 6-digit code.' });
     }
 
@@ -187,6 +191,66 @@ module.exports = function userRoutes(limiters) {
     } catch (err) {
       console.error('[user/password]', err);
       res.status(500).json({ error: 'Failed to update password.' });
+    }
+  });
+
+  // PATCH /api/user/security { loginTwoFactor, currentPassword? }
+  // Two-step sign-in (opt-in). Turning it on needs a verified email; turning it
+  // off needs the current password. The security limiter counts every request,
+  // so it also caps password guesses on the turn-off branch.
+  router.patch('/security', limiters.security, async (req, res) => {
+    const { loginTwoFactor, currentPassword } = req.body ?? {};
+    if (typeof loginTwoFactor !== 'boolean') {
+      return res.status(400).json({ error: 'loginTwoFactor must be true or false.' });
+    }
+
+    try {
+      const user = await prisma.user.findUnique({ where: { id: req.userId } });
+      if (!user) return res.status(404).json({ error: 'User not found.' });
+
+      if (user.loginTwoFactor !== loginTwoFactor) {
+        if (loginTwoFactor && !user.emailVerified) {
+          return res.status(403).json({ error: 'Verify your email before turning on two-step sign-in.' });
+        }
+        if (!loginTwoFactor) {
+          if (typeof currentPassword !== 'string' || !currentPassword) {
+            return res.status(400).json({ error: 'Current password is required to turn off two-step sign-in.' });
+          }
+          if (!(await bcrypt.compare(currentPassword, user.password))) {
+            return res.status(401).json({ error: 'Current password is incorrect.' });
+          }
+        }
+      }
+
+      // Already at that value: nothing is written (only the SAFE_SELECT fields).
+      if (user.loginTwoFactor === loginTwoFactor) {
+        return res.json(Object.fromEntries(Object.keys(SAFE_SELECT).map((k) => [k, user[k]])));
+      }
+      if (loginTwoFactor) {
+        // Turn on only if the email is still verified at write time: an email
+        // change in between (PATCH /me) must not leave it on for an unverified
+        // address.
+        const { count } = await prisma.user.updateMany({
+          where: { id: req.userId, emailVerified: true },
+          data: { loginTwoFactor: true },
+        });
+        if (count === 0) {
+          return res.status(403).json({ error: 'Verify your email before turning on two-step sign-in.' });
+        }
+        const turnedOn = await prisma.user.findUnique({ where: { id: req.userId }, select: SAFE_SELECT });
+        if (!turnedOn) return res.status(404).json({ error: 'User not found.' });
+        return res.json(turnedOn);
+      }
+      const updated = await prisma.user.update({
+        where: { id: req.userId },
+        data: { loginTwoFactor },
+        select: SAFE_SELECT,
+      });
+      res.json(updated);
+    } catch (err) {
+      if (err.code === 'P2025') return res.status(404).json({ error: 'User not found.' });
+      console.error('[user/security]', err);
+      res.status(500).json({ error: 'Failed to save settings.' });
     }
   });
 
