@@ -6,18 +6,28 @@ import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/login_challenge.dart';
 import '../core/theme_provider.dart';
 
 /// Enter the 6-digit code emailed to the user.
 /// [sendOnOpen]: request a fresh code when the screen opens (false when the
 /// backend has just sent one, e.g. right after registering or changing email).
+/// [login]: two-step sign-in mode. The code is a sign-in code for this
+/// challenge, and the right one logs the user in (see [openLogin]).
 class VerifyEmailScreen extends StatefulWidget {
   final bool sendOnOpen;
-  const VerifyEmailScreen({super.key, this.sendOnOpen = true});
+  final LoginChallenge? login;
+  const VerifyEmailScreen({super.key, this.sendOnOpen = true, this.login});
 
   static Future<void> open(BuildContext context, {bool sendOnOpen = true}) =>
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VerifyEmailScreen(sendOnOpen: sendOnOpen)));
+
+  /// "Confirm it's you" after a correct password on an account with two-step
+  /// sign-in on. Asks for a code when it opens.
+  static Future<void> openLogin(BuildContext context, LoginChallenge c) =>
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => VerifyEmailScreen(login: c)));
 
   @override
   State<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
@@ -35,6 +45,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   String? _info;
   int _cooldown = 0;
   Timer? _timer;
+
+  /// Login mode: the challenge was rejected (expired, or the password changed),
+  /// so the only way on is back to the login form.
+  bool _expired = false;
+
+  bool get _loginMode => widget.login != null;
 
   @override
   void initState() {
@@ -68,7 +84,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   Future<void> _resend() async {
     setState(() { _sending = true; _error = null; _info = null; });
     try {
-      await ApiClient.sendEmailCode();
+      final login = widget.login;
+      if (login == null) {
+        await ApiClient.sendEmailCode();
+      } else {
+        await ApiClient.sendLoginCode(login.challengeToken);
+      }
       _codeCtrl.clear();
       setState(() => _info = 'A new code is on its way.');
       _startCooldown(_resendSeconds);
@@ -78,7 +99,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       if (e.statusCode == 429 && wait != null) {
         _startCooldown(int.parse(wait));
       } else {
-        setState(() => _error = e.message);
+        setState(() {
+          _error = e.message;
+          if (_loginMode && e.statusCode == 401) _expired = true;
+        });
       }
     } catch (e) {
       setState(() => _error = e.toString());
@@ -92,7 +116,18 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     if (code.length != _codeLength || _verifying) return;
     setState(() { _verifying = true; _error = null; _info = null; });
     final auth = context.read<AuthProvider>();
+    final login = widget.login;
+    final navigator = Navigator.of(context);
     try {
+      if (login != null) {
+        final session = await ApiClient.verifyLogin(login.challengeToken, code);
+        // The app shell replaces the login form under this route, so the pop
+        // shows the dashboard. If the user tapped Cancel while waiting, this
+        // route is already gone: popping again would pop the app shell.
+        await auth.completeLogin(session.token, session.user);
+        if (mounted) navigator.pop();
+        return;
+      }
       final user = await ApiClient.verifyEmail(code);
       auth.updateUser(user);
       if (!mounted) return;
@@ -103,8 +138,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       ));
       Navigator.of(context).pop();
     } catch (e) {
+      if (!mounted) return;
       _codeCtrl.clear();
-      setState(() => _error = e.toString());
+      setState(() {
+        _error = e.toString();
+        if (_loginMode && e is ApiException && e.statusCode == 401) _expired = true;
+      });
       _focus.requestFocus();
     } finally {
       if (mounted) setState(() => _verifying = false);
@@ -114,7 +153,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark      = context.watch<ThemeProvider>().isDark;
-    final email       = context.watch<AuthProvider>().user?.email ?? '';
+    final login       = widget.login;
+    final email       = login?.email ?? context.watch<AuthProvider>().user?.email ?? '';
     final bg          = isDark ? AppColors.bg      : AppColors.bgLight;
     final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
     final border      = isDark ? AppColors.border  : AppColors.borderLight;
@@ -130,7 +170,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text('Later',
+            // Email mode: skip for now (verify later from Profile).
+            // Login mode: back to the login form, which keeps what was typed.
+            child: Text(login != null ? 'Cancel' : 'Verify later',
               style: GoogleFonts.dmSans(
                 color: textMuted, fontSize: 14, fontWeight: FontWeight.w600)),
           ),
@@ -153,17 +195,20 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                       blurRadius: 24, spreadRadius: 2),
                   ],
                 ),
-                child: const Icon(Icons.mark_email_unread_rounded,
+                child: Icon(
+                  login != null ? Icons.lock_outline_rounded : Icons.mark_email_unread_rounded,
                   color: Colors.white, size: 34),
               ),
               const SizedBox(height: 24),
-              Text('Check your email',
+              Text(login != null ? "Confirm it's you" : 'Check your email',
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 24, fontWeight: FontWeight.w800, color: textPrimary)),
               const SizedBox(height: 8),
               Text.rich(
                 TextSpan(children: [
-                  const TextSpan(text: 'We sent a 6-digit code to\n'),
+                  TextSpan(text: login != null
+                      ? 'We sent a sign-in code to\n'
+                      : 'We sent a 6-digit code to\n'),
                   TextSpan(text: email,
                     style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600)),
                 ]),
@@ -241,7 +286,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: ElevatedButton(
-                    onPressed: _verifying ? null : _verify,
+                    onPressed: _expired
+                        ? () => Navigator.of(context).pop()
+                        : _verifying ? null : _verify,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
@@ -251,7 +298,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                         ? const SizedBox(width: 20, height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
-                        : Text('Verify Email',
+                        : Text(_expired ? 'Back to login' : login != null ? 'Sign in' : 'Verify Email',
                             style: GoogleFonts.spaceGrotesk(
                               fontWeight: FontWeight.w700,
                               fontSize: 15, color: Colors.white)),
@@ -260,7 +307,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
               ),
               const SizedBox(height: 16),
 
-              TextButton(
+              if (!_expired) TextButton(
                 onPressed: (_cooldown > 0 || _sending) ? null : _resend,
                 child: Text(
                   _sending

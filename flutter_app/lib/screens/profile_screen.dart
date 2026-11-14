@@ -8,6 +8,7 @@ import '../core/theme_provider.dart';
 import '../core/validators.dart';
 import '../widgets/budgets_alerts_card.dart';
 import '../widgets/password_meter.dart';
+import '../widgets/security_card.dart';
 import 'verify_email_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -99,9 +100,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         email: email,
         currentPassword: _emailChanged ? _passwordCtrl.text : null);
       final emailChanged = _emailChanged;
+      // An email change turns two-step sign-in off on the server.
+      final lostTwoFactor = (user?.loginTwoFactor ?? false) && !updated.loginTwoFactor;
       auth.updateUser(updated);
       _passwordCtrl.clear();
-      setState(() { _status = 'success'; _msg = 'Profile updated.'; });
+      setState(() {
+        _status = 'success';
+        _msg = lostTwoFactor
+            ? 'Profile updated. Two-step sign-in was turned off; verify your new email to turn it on again.'
+            : 'Profile updated.';
+      });
       // A new email must be verified — the backend has already sent the code
       if (emailChanged && !updated.emailVerified && mounted) {
         VerifyEmailScreen.open(context, sendOnOpen: false);
@@ -219,6 +227,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // Budgets & alerts card (budgets link + email switches)
               const BudgetsAlertsCard(),
+              const SizedBox(height: 14),
+
+              // Sign-in security card (two-step sign-in switch)
+              const SecurityCard(),
               const SizedBox(height: 14),
 
               // Account info card

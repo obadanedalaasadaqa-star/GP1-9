@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../core/theme_provider.dart';
 import '../core/validators.dart';
 import '../widgets/password_meter.dart';
+import 'verify_email_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -58,7 +59,13 @@ class _AuthScreenState extends State<AuthScreen>
           password: _password.text,
         );
       } else {
-        await auth.login(_email.text.trim(), _password.text);
+        final challenge = await auth.login(_email.text.trim(), _password.text);
+        // Two-step sign-in is on: ask for the emailed code. Cancel comes back
+        // here with the email and password still filled in.
+        if (challenge != null && mounted) {
+          setState(() => _loading = false);
+          await VerifyEmailScreen.openLogin(context, challenge);
+        }
       }
     } catch (e) {
       setState(() => _error = e.toString());

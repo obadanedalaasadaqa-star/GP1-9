@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_models.dart';
 import 'budget_models.dart';
 import 'constants.dart';
+import 'login_challenge.dart';
 import 'offline_cache.dart';
 import 'receipt_model.dart';
 import 'stats_model.dart';
@@ -136,7 +137,9 @@ class ApiClient {
     );
   }
 
-  static Future<({String token, User user})> login({
+  /// A [LoginSession], or a [LoginChallenge] when two-step sign-in is on
+  /// (then [sendLoginCode] and [verifyLogin] finish the login).
+  static Future<LoginResult> login({
     required String email,
     required String password,
   }) async {
@@ -145,6 +148,45 @@ class ApiClient {
           Uri.parse('${AppConfig.baseUrl}/auth/login'),
           headers: await _headers(),
           body: jsonEncode({'email': email, 'password': password}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    final data = _parse(res);
+    final challenge = data['challengeToken'];
+    if (data['twoFactorRequired'] == true && challenge is String) {
+      return LoginChallenge(challengeToken: challenge, email: email);
+    }
+    return LoginSession(
+      token: data['token'] as String,
+      user: User.fromJson(data['user'] as Map<String, dynamic>),
+    );
+  }
+
+  /// Email a sign-in code for [challengeToken] (no session yet, so no
+  /// Authorization header). Throws ApiException 429 within a minute of the last one.
+  static Future<void> sendLoginCode(String challengeToken) async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/auth/login/send-code'),
+          headers: await _headers(),
+          body: jsonEncode({'challengeToken': challengeToken}),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    _parse(res);
+  }
+
+  /// Trade the sign-in code for the normal session.
+  static Future<({String token, User user})> verifyLogin(String challengeToken, String code) async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/auth/login/verify'),
+          headers: await _headers(),
+          body: jsonEncode({'challengeToken': challengeToken, 'code': code}),
         )
         .timeout(
           _kTimeout,
@@ -244,6 +286,25 @@ class ApiClient {
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     _parse(res);
+  }
+
+  /// Turn two-step sign-in on (needs a verified email) or off (needs
+  /// [currentPassword]).
+  static Future<User> setLoginTwoFactor(bool on, {String? currentPassword}) async {
+    final res = await http
+        .patch(
+          Uri.parse('${AppConfig.baseUrl}/user/security'),
+          headers: await _headers(auth: true),
+          body: jsonEncode({
+            'loginTwoFactor': on,
+            'currentPassword': ?currentPassword,
+          }),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    return User.fromJson(_parse(res));
   }
 
   /// Email settings. Always sends the phone's time zone too.

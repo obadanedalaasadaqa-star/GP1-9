@@ -15,6 +15,9 @@ class User {
   /// Opt-in weekly summary email.
   final bool weeklySummaryEmails;
 
+  /// Two-step sign-in (opt-in): an emailed code at every password login.
+  final bool loginTwoFactor;
+
   const User({
     required this.id,
     required this.email,
@@ -27,6 +30,7 @@ class User {
     required this.createdAt,
     this.budgetAlertEmails = true,
     this.weeklySummaryEmails = false,
+    this.loginTwoFactor = false,
   });
 
   factory User.fromJson(Map<String, dynamic> j) {
@@ -46,6 +50,7 @@ class User {
       // Missing in older cached profiles: the server's defaults.
       budgetAlertEmails: j['budgetAlertEmails'] as bool? ?? true,
       weeklySummaryEmails: j['weeklySummaryEmails'] as bool? ?? false,
+      loginTwoFactor: j['loginTwoFactor'] as bool? ?? false,
     );
   }
 
@@ -61,6 +66,7 @@ class User {
     'createdAt': createdAt.toUtc().toIso8601String(),
     'budgetAlertEmails': budgetAlertEmails,
     'weeklySummaryEmails': weeklySummaryEmails,
+    'loginTwoFactor': loginTwoFactor,
   };
 
   User copyWith({
@@ -71,6 +77,7 @@ class User {
     int? loyaltyPoints,
     bool? budgetAlertEmails,
     bool? weeklySummaryEmails,
+    bool? loginTwoFactor,
   }) =>
       User(
         id: id,
@@ -84,5 +91,6 @@ class User {
         createdAt: createdAt,
         budgetAlertEmails: budgetAlertEmails ?? this.budgetAlertEmails,
         weeklySummaryEmails: weeklySummaryEmails ?? this.weeklySummaryEmails,
+        loginTwoFactor: loginTwoFactor ?? this.loginTwoFactor,
       );
 }

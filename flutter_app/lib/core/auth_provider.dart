@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'api_client.dart';
+import 'login_challenge.dart';
 import 'offline_cache.dart';
 import 'user_model.dart';
 
@@ -103,12 +104,25 @@ class AuthProvider extends ChangeNotifier {
     await _init();
   }
 
-  Future<void> login(String email, String password) async {
+  /// Null when logged in. A [LoginChallenge] when two-step sign-in is on:
+  /// nothing is saved until the code screen calls [completeLogin].
+  Future<LoginChallenge?> login(String email, String password) async {
     final result = await ApiClient.login(email: email, password: password);
-    await ApiClient.saveToken(result.token);
-    _user = result.user;
+    switch (result) {
+      case LoginSession(:final token, :final user):
+        await completeLogin(token, user);
+        return null;
+      case LoginChallenge():
+        return result;
+    }
+  }
+
+  /// Save the session and show the app (after a login or a sign-in code).
+  Future<void> completeLogin(String token, User user) async {
+    await ApiClient.saveToken(token);
+    _user = user;
     _offline = false;
-    await _saveUser(result.user);
+    await _saveUser(user);
     notifyListeners();
   }
 

@@ -1,0 +1,90 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:nexus_app/core/api_client.dart';
+import 'package:nexus_app/core/auth_provider.dart';
+import 'package:nexus_app/core/theme_provider.dart';
+import 'package:nexus_app/screens/profile_screen.dart';
+import 'package:nexus_app/screens/verify_email_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/auth_fixtures.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
+  setUp(() => SharedPreferences.setMockInitialValues({'nexus_token': 't'}));
+
+  late Future<http.Response> Function(http.Request) handler;
+  Future<void> run(Future<void> Function() body) =>
+      http.runWithClient(body, () => MockClient((req) => handler(req)));
+
+  /// ProfileScreen behind a stand-in auth gate ("LOGGED OUT" after Sign Out).
+  Future<void> pumpProfile(WidgetTester tester, {bool verified = true}) async {
+    tester.view.physicalSize = const Size(800, 1600); // wide: the test font is wider than DM Sans
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    handler = (req) async => req.url.path.endsWith('/user/me')
+        ? http.Response(jsonEncode(userJson(verified: verified)), 200)
+        : http.Response(jsonEncode({'message': 'ok'}), 200);
+    await run(() async {
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ],
+        child: MaterialApp(
+          home: Builder(builder: (context) {
+            final auth = context.watch<AuthProvider>();
+            if (auth.loading) return const SizedBox();
+            return auth.isLoggedIn ? const ProfileScreen() : const Scaffold(body: Text('LOGGED OUT'));
+          }),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    });
+  }
+
+  Future<void> tapVisible(WidgetTester tester, Finder f) => run(() async {
+        await tester.scrollUntilVisible(f, 200, scrollable: find.byType(Scrollable).first);
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      });
+
+  testWidgets('shows the name, email and the "Verified" chip', (tester) async {
+    await pumpProfile(tester);
+    expect(find.text('Sara Ali'), findsWidgets);
+    expect(find.text('a@nexus.test'), findsWidgets);
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('Not verified · Verify'), findsNothing);
+  });
+
+  testWidgets('not verified: tapping the chip opens the code screen', (tester) async {
+    await pumpProfile(tester, verified: false);
+    expect(find.text('Verified'), findsNothing);
+    await tapVisible(tester, find.text('Not verified · Verify'));
+    expect(find.byType(VerifyEmailScreen), findsOneWidget);
+    expect(find.text('Verify later'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); // stop the resend timer
+  });
+
+  testWidgets('the SIGN-IN SECURITY card is on the profile', (tester) async {
+    await pumpProfile(tester);
+    await run(() => tester.scrollUntilVisible(find.text('SIGN-IN SECURITY'), 200,
+        scrollable: find.byType(Scrollable).first));
+    expect(find.text('SIGN-IN SECURITY'), findsOneWidget);
+    expect(find.byKey(const ValueKey('switch-2fa')), findsOneWidget);
+  });
+
+  testWidgets('Sign Out logs out and clears the token', (tester) async {
+    await pumpProfile(tester);
+    await tapVisible(tester, find.text('Sign Out'));
+    expect(find.text('LOGGED OUT'), findsOneWidget);
+    expect(await ApiClient.getToken(), isNull);
+  });
+}
