@@ -94,3 +94,35 @@ describe('POST /api/receipts/seed', () => {
     expect(again.body.seeded).toBe(false);
   }, SLOW);
 });
+
+describe('POST /api/receipts input checks', () => {
+  let c;
+  beforeAll(async () => { c = await registerUser(app); });
+
+  const valid = { storeName: 'Carrefour', category: 'Supermarket', totalAmount: 10, items: ['Milk'] };
+  const TOTAL = 'Total must be a number above 0 and at most 10000.';
+  const ITEMS = 'Items must be a list of up to 100 texts of at most 200 characters.';
+
+  test.each([
+    ['a negative total', { totalAmount: -5 }, TOTAL],
+    ['a zero total', { totalAmount: 0 }, TOTAL],
+    ['a string total', { totalAmount: '12' }, TOTAL],
+    ['a total above 10000', { totalAmount: 10000.01 }, TOTAL],
+    ['a non-string item', { items: ['Milk', 5] }, ITEMS],
+    ['101 items', { items: Array.from({ length: 101 }, () => 'x') }, ITEMS],
+    ['a 61-character store name', { storeName: 'S'.repeat(61) }, 'Store name must be 1 to 60 characters.'],
+    ['a numeric storeName (400, not a hang)', { storeName: 5 }, 'Store name must be 1 to 60 characters.'],
+    ['a 41-character category', { category: 'C'.repeat(41) }, 'Category must be 1 to 40 characters.'],
+  ])('400 for %s', async (_label, over, error) => {
+    const res = await request(app).post('/api/receipts').set(auth(c.token)).send({ ...valid, ...over });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(error);
+  });
+
+  test('nothing was saved and the points are unchanged', async () => {
+    const list = await request(app).get('/api/user/receipts').set(auth(c.token));
+    expect(list.body).toHaveLength(0);
+    const me = await request(app).get('/api/user/me').set(auth(c.token));
+    expect(me.body.loyaltyPoints).toBe(c.user.loyaltyPoints);
+  });
+});

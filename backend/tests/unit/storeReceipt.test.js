@@ -1,4 +1,4 @@
-const { normalizeSerial, parseStoreReceipt } = require('../../src/lib/storeReceipt');
+const { normalizeSerial, parseStoreReceipt, parseUserReceipt } = require('../../src/lib/storeReceipt');
 
 const SERIAL = 'NXS-C26B9-285D7';
 const item = (over = {}) => ({ name: 'Milk', qty: 1, unitPrice: 1.25, ...over });
@@ -112,4 +112,27 @@ describe('parseStoreReceipt', () => {
     'emailCopy %p gives %p', (emailCopy, expected) => {
       expect(parseStoreReceipt(body({ emailCopy })).emailCopy).toBe(expected);
     });
+});
+
+describe('parseUserReceipt (POST /api/receipts)', () => {
+  const ok = { storeName: ' Carrefour ', category: ' Food ', totalAmount: 12.75, items: ['Milk'] };
+
+  test('a valid body is trimmed; empty items are allowed', () => {
+    expect(parseUserReceipt(ok)).toEqual({ storeName: 'Carrefour', category: 'Food', totalAmount: 12.75, items: ['Milk'] });
+    expect(parseUserReceipt({ ...ok, items: [] }).items).toEqual([]);
+    expect(parseUserReceipt({ ...ok, totalAmount: 10000 }).error).toBeUndefined();
+  });
+
+  test.each([
+    ['no body', undefined, /required/],
+    ['a blank store name', { ...ok, storeName: '  ' }, /required/],
+    ['items not a list', { ...ok, items: 'Milk' }, /required/],
+    ['"12abc" as the total', { ...ok, totalAmount: '12abc' }, /^Total must be/],
+    ['NaN as the total', { ...ok, totalAmount: NaN }, /^Total must be/],
+    ['Infinity as the total', { ...ok, totalAmount: Infinity }, /^Total must be/],
+    ['an object as the store name', { ...ok, storeName: {} }, /^Store name must be/],
+    ['a 201-character item', { ...ok, items: ['x'.repeat(201)] }, /^Items must be/],
+  ])('rejects %s', (_label, body, error) => {
+    expect(parseUserReceipt(body).error).toMatch(error);
+  });
 });

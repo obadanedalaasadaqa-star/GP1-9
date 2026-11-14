@@ -1,4 +1,5 @@
-// Validation for POST /api/store/receipts. Pure functions, no DB.
+// Validation for POST /api/store/receipts (and the simpler POST /api/receipts).
+// Pure functions, no DB.
 
 const PRICE_DECIMALS = 3;      // JD has 3 decimals (fils); the app shows 2
 const MAX_UNIT_PRICE = 10000;  // JD
@@ -84,7 +85,40 @@ function parseStoreReceipt(body) {
   };
 }
 
+const USER_MAX_STORE    = 60;   // same as scripts/create-store.js
+const USER_MAX_CATEGORY = 40;
+const USER_MAX_ITEM     = 200;  // free text here, not the simulator's item names
+
+const isBlank = (v) => v == null || (typeof v === 'string' && !v.trim());
+const textOk = (v, max) => typeof v === 'string' && v.trim().length >= 1 && v.trim().length <= max;
+
+/**
+ * Validate a POST /api/receipts body (items are plain strings, may be empty).
+ * Returns { error } (the first failing rule) or
+ * { storeName, category, totalAmount, items } trimmed and ready to save.
+ */
+function parseUserReceipt(body) {
+  const { storeName, category, totalAmount, items } = isPlainObject(body) ? body : {};
+  if (isBlank(storeName) || isBlank(category) || totalAmount == null || !Array.isArray(items)) {
+    return { error: 'storeName, category, totalAmount, and items are required.' };
+  }
+  if (!textOk(storeName, USER_MAX_STORE)) {
+    return { error: `Store name must be 1 to ${USER_MAX_STORE} characters.` };
+  }
+  if (!textOk(category, USER_MAX_CATEGORY)) {
+    return { error: `Category must be 1 to ${USER_MAX_CATEGORY} characters.` };
+  }
+  // A numeric string ("12abc" or "12") is rejected, not parsed.
+  if (typeof totalAmount !== 'number' || !Number.isFinite(totalAmount) || totalAmount <= 0 || totalAmount > MAX_TOTAL) {
+    return { error: `Total must be a number above 0 and at most ${MAX_TOTAL}.` };
+  }
+  if (items.length > MAX_ITEMS || !items.every((it) => typeof it === 'string' && it.length <= USER_MAX_ITEM)) {
+    return { error: `Items must be a list of up to ${MAX_ITEMS} texts of at most ${USER_MAX_ITEM} characters.` };
+  }
+  return { storeName: storeName.trim(), category: category.trim(), totalAmount, items };
+}
+
 module.exports = {
   PRICE_DECIMALS, MAX_UNIT_PRICE, MAX_TOTAL, MAX_ITEMS, MAX_QTY,
-  normalizeSerial, parseStoreReceipt,
+  normalizeSerial, parseStoreReceipt, parseUserReceipt,
 };

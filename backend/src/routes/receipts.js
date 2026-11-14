@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
+const { parseUserReceipt } = require('../lib/storeReceipt');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -16,12 +17,12 @@ const DEMO_RECEIPTS = [
 ];
 
 // POST /api/receipts — create a single receipt (called by store scanner in production)
+// Body: { storeName (1-60), category (1-40), totalAmount (number, 0 < x <= 10000),
+// items (0-100 strings of at most 200 chars) }. See parseUserReceipt.
 router.post('/', async (req, res) => {
-  const { storeName, category, totalAmount, items } = req.body ?? {};
-
-  if (!storeName?.trim() || !category?.trim() || totalAmount == null || !Array.isArray(items)) {
-    return res.status(400).json({ error: 'storeName, category, totalAmount, and items are required.' });
-  }
+  const parsed = parseUserReceipt(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const { storeName, category, totalAmount, items } = parsed;
 
   try {
     const pointsEarned = Math.floor(totalAmount);
@@ -29,9 +30,9 @@ router.post('/', async (req, res) => {
       prisma.receipt.create({
         data: {
           userId: req.userId,
-          storeName: storeName.trim(),
-          category: category.trim(),
-          totalAmount: parseFloat(totalAmount),
+          storeName,
+          category,
+          totalAmount,
           items,
           pointsEarned,
         },

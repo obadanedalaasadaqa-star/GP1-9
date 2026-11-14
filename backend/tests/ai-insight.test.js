@@ -177,38 +177,69 @@ describe('GET /api/ai/insight', () => {
   }, SLOW);
 
   test('I-11 parallel requests share one call; failures never leave an unhandled rejection', async () => {
-    const u = await seededUser(app);
-    // (1) Two parallel GETs, one Claude call, the same row.
-    ai.next(async (req) => { await wait(300); return defaultInsight(req); });
-    const [a, b] = await Promise.all([getInsight(u.token), getInsight(u.token)]);
-    expect(a.status).toBe(200);
-    expect(b.status).toBe(200);
-    expect(a.body.createdAt).toBe(b.body.createdAt);
-    expect(ai.create).toHaveBeenCalledTimes(1);
+    // Gate instead of a fixed wait: the fake answers only after both requests'
+    // prechecks and the shared call's re-read have read the saved insight
+    // (3 resolved findUnique calls this round), plus one tick so the second
+    // request has joined the shared promise. Over the pooler a fixed 300 ms
+    // was sometimes not enough.
+    let resolved = 0;
+    const realFindUnique = prisma.aiInsight.findUnique;
+    const spy = jest.spyOn(prisma.aiInsight, 'findUnique').mockImplementation(async (...args) => {
+      const row = await realFindUnique.apply(prisma.aiInsight, args);
+      resolved++;
+      return row;
+    });
+    const gated = (handler) => {
+      const base = resolved;
+      return async (req) => {
+        const start = Date.now();
+        while (resolved - base < 3) {
+          if (Date.now() - start > 20_000) {
+            throw new Error(`I-11 gate: only ${resolved - base} of 3 insight reads after 20 s`);
+          }
+          await wait(10);
+        }
+        await new Promise((r) => setImmediate(r));
+        return handler(req);
+      };
+    };
 
-    // (2) Stale, then the shared call fails: both get 503.
-    await addReceipt(app, u.token, 'Shop', 'Food', 5);
-    ai.next(async () => { await wait(300); throw sdkError(429); });
-    const failed = await Promise.all([getInsight(u.token), getInsight(u.token)]);
-    expect(failed.map((r) => r.status)).toEqual([503, 503]);
-    expect(ai.create).toHaveBeenCalledTimes(2);
+    try {
+      const u = await seededUser(app);
+      // (1) Two parallel GETs, one Claude call, the same row.
+      ai.next(gated(defaultInsight));
+      const [a, b] = await Promise.all([getInsight(u.token), getInsight(u.token)]);
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(a.body.createdAt).toBe(b.body.createdAt);
+      expect(ai.create).toHaveBeenCalledTimes(1);
 
-    // (3) The next GET works.
-    const next = await getInsight(u.token);
-    expect(next.body.cached).toBe(false);
-    expect(ai.create).toHaveBeenCalledTimes(3);
+      // (2) Stale, then the shared call fails: both get 503.
+      await addReceipt(app, u.token, 'Shop', 'Food', 5);
+      ai.next(gated(() => { throw sdkError(429); }));
+      const failed = await Promise.all([getInsight(u.token), getInsight(u.token)]);
+      expect(failed.map((r) => r.status)).toEqual([503, 503]);
+      expect(ai.create).toHaveBeenCalledTimes(2);
 
-    // (4) Failing shared calls (busy, then an invented number). jest-circus
-    // fails the running test on any unhandled rejection; the setImmediate
-    // wait keeps the test alive long enough for one to surface.
-    await addReceipt(app, u.token, 'Shop', 'Food', 1);
-    ai.next(async () => { await wait(200); throw sdkError(429); });
-    expect((await Promise.all([getInsight(u.token), getInsight(u.token)])).map((r) => r.status)).toEqual([503, 503]);
-    await new Promise((r) => setImmediate(r));
-    ai.next(async () => { await wait(200); return json({ summary: 'You spent 999.99 JD.', tip: 'x' }); });
-    expect((await Promise.all([getInsight(u.token), getInsight(u.token)])).map((r) => r.status)).toEqual([502, 502]);
-    await new Promise((r) => setImmediate(r));
-    await wait(50);
+      // (3) The next GET works.
+      const next = await getInsight(u.token);
+      expect(next.body.cached).toBe(false);
+      expect(ai.create).toHaveBeenCalledTimes(3);
+
+      // (4) Failing shared calls (busy, then an invented number). jest-circus
+      // fails the running test on any unhandled rejection; the setImmediate
+      // wait keeps the test alive long enough for one to surface.
+      await addReceipt(app, u.token, 'Shop', 'Food', 1);
+      ai.next(gated(() => { throw sdkError(429); }));
+      expect((await Promise.all([getInsight(u.token), getInsight(u.token)])).map((r) => r.status)).toEqual([503, 503]);
+      await new Promise((r) => setImmediate(r));
+      ai.next(gated(() => json({ summary: 'You spent 999.99 JD.', tip: 'x' })));
+      expect((await Promise.all([getInsight(u.token), getInsight(u.token)])).map((r) => r.status)).toEqual([502, 502]);
+      await new Promise((r) => setImmediate(r));
+      await wait(50);
+    } finally {
+      spy.mockRestore();
+    }
   }, SLOW);
 
   test('I-12 rate limit only counts requests that would call Claude', async () => {

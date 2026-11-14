@@ -21,10 +21,12 @@ function fakeClient(impl = async () => reply(okJson)) {
 const headers = new Headers();
 const apiError = (status) => Anthropic.APIError.generate(status, { error: { type: 'x', message: 'm' } }, 'm', headers);
 
+// Set to '' instead of deleted (same rule as tests/env.js): loading Prisma
+// later would refill a deleted variable from backend/.env.
 afterEach(() => {
-  delete process.env.AI_MODEL;
-  delete process.env.AI_FALLBACKS;
-  delete process.env.ANTHROPIC_API_KEY;
+  process.env.AI_MODEL = '';
+  process.env.AI_FALLBACKS = '';
+  process.env.ANTHROPIC_API_KEY = '';
 });
 
 describe('createMessage', () => {
@@ -161,5 +163,10 @@ describe('getAiClient', () => {
     expect(c).toBeInstanceOf(Anthropic.Anthropic);
     expect(typeof c.messages.create).toBe('function');
     expect(getAiClient()).toBe(c);
+  });
+
+  test('the key from the test above is cleared to \'\', not deleted', () => {
+    expect(process.env.ANTHROPIC_API_KEY).toBe('');
+    expect(getAiClient()).toBeNull();
   });
 });
