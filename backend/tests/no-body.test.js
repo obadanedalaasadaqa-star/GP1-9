@@ -56,6 +56,26 @@ test('a broken JSON body still gets 400 "Invalid JSON body."', async () => {
   expect(res.body.error).toBe('Invalid JSON body.');
 }, SLOW);
 
+test('a JSON body over the size limit gets 413, not 500', async () => {
+  const res = await request(app).post('/api/auth/login')
+    .set('Content-Type', 'application/json')
+    .send(JSON.stringify({ email: 'x'.repeat(200 * 1024) }));
+  expect(res.status).toBe(413);
+  expect(res.body.error).toBe('Request body is too large.');
+}, SLOW);
+
+test('an unsupported charset gets 415, not 500', async () => {
+  const res = await request(app).post('/api/auth/login')
+    .set('Content-Type', 'application/json; charset=klingon').send('{}');
+  expect(res.status).toBe(415);
+  expect(res.body.error).toBe('Unsupported request body.');
+}, SLOW);
+
+test('?period=toString on the report gets 400, not 500', async () => {
+  const res = await request(app).get('/api/ai/report?period=toString').set(auth(u.token));
+  expect(res.status).toBe(400);
+}, SLOW);
+
 test('a broken percent-encoded path still gets 400', async () => {
   const res = await request(app).delete('/api/budgets/%E0').set(auth(u.token));
   expect(res.status).toBe(400);

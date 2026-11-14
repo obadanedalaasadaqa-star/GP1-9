@@ -44,6 +44,8 @@ describe('resolvePeriod', () => {
   test.each([
     [{}, ERR.period],
     [{ period: '2m' }, ERR.period],
+    [{ period: 'toString' }, ERR.period],
+    [{ period: '__proto__' }, ERR.period],
     [{ period: ['1m'] }, ERR.period],
     [{ period: 'custom' }, ERR.dates],
     [{ period: 'custom', from: '2026-02-30', to: '2026-03-01' }, ERR.dates],

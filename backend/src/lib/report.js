@@ -36,7 +36,7 @@ const MAX_TIP = 200;
  * same number of days just before it.
  */
 function resolvePeriod({ period, from, to } = {}, now, tz) {
-  if (typeof period !== 'string' || !(period in PRESET_MONTHS || period === 'custom')) {
+  if (typeof period !== 'string' || !(Object.hasOwn(PRESET_MONTHS, period) || period === 'custom')) {
     return { error: ERR.period };
   }
   const today = todayLocal(now, tz);

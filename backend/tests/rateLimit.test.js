@@ -236,6 +236,16 @@ describe('passwordCheck limiter', () => {
     expect((await changeEmail(app, u1, 'Wrong@2026')).status).toBe(429);
   }, SLOW * 2);
 
+  test('a name-only edit still works while the limit is reached', async () => {
+    const u = await registerUser(makeApp());
+    const app = createApp({ rateLimit: { passwordCheck: { limit: 1 } } });
+    expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(401);
+    expect((await changeEmail(app, u, 'Wrong@2026')).status).toBe(429);
+    const rename = await request(app).patch('/api/user/me').set(auth(u.token))
+      .send({ firstName: 'Test', lastName: 'User' });
+    expect(rename.status).toBe(200);
+  }, SLOW * 2);
+
   test('name edits, validation errors and right passwords are not counted', async () => {
     const u = await registerUser(makeApp());
     const app = createApp({ rateLimit: { passwordCheck: { limit: 2 } } });

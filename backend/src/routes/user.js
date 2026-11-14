@@ -49,7 +49,13 @@ module.exports = function userRoutes(limiters) {
   // PATCH /api/user/me  — update first name, last name, and email
   // Changing the email requires the current password. Other body fields
   // (e.g. a "phone" from an old app build) are ignored.
-  router.patch('/me', limiters.passwordCheck, async (req, res) => {
+  // The password limiter only runs when a password is sent (an email change), so
+  // a name-only edit is never blocked. Without currentPassword no password is
+  // checked, so skipping the limiter there can't be used to guess one.
+  const passwordCheckIfSent = (req, res, next) =>
+    (req.body?.currentPassword ? limiters.passwordCheck(req, res, next) : next());
+
+  router.patch('/me', passwordCheckIfSent, async (req, res) => {
     const firstName = req.body?.firstName?.trim();
     const lastName  = req.body?.lastName?.trim();
     if (!firstName || !lastName) {

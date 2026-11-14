@@ -66,6 +66,13 @@ function createApp({ rateLimit, aiClient, aiCaps } = {}) {
     if (err.status === 400 || err instanceof URIError) {
       return res.status(400).json({ error: 'Invalid request.' });
     }
+    // Other client errors from the body parser keep their own 4xx status:
+    // 413 body too large, 415 unsupported charset or encoding.
+    if (err.type && err.expose && err.status >= 400 && err.status < 500) {
+      const error = err.status === 413 ? 'Request body is too large.'
+        : err.status === 415 ? 'Unsupported request body.' : 'Invalid request.';
+      return res.status(err.status).json({ error });
+    }
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
   });
