@@ -31,6 +31,13 @@ const DEFAULT_LIMITS = {
   // guessing on the turn-off branch.
   security:        { windowMs: 15 * MIN, limit: 10, byUser: true,
                      error: 'Too many attempts. Try again later.' },
+  // PATCH /api/user/password and PATCH /api/user/me (email change). Only a
+  // wrong current password (401) counts, so name edits, validation errors and
+  // a normal password change never use it up. Stops a stolen session from
+  // guessing the password to take the account over.
+  passwordCheck:   { windowMs: 15 * MIN, limit: 5, byUser: true, skipSuccessfulRequests: true,
+                     requestWasSuccessful: (_req, res) => res.statusCode !== 401,
+                     error: 'Too many wrong passwords. Try again in 15 minutes.' },
   storeAuth:  { windowMs: 15 * MIN, limit: 20, byUser: false, skipSuccessfulRequests: true,
                 requestWasSuccessful: (_req, res) => res.statusCode !== 401,
                 error: 'Too many wrong store keys. Try again in a few minutes.' },
@@ -81,7 +88,7 @@ function buildLimiter(name, {
 
 /**
  * Returns { login, register, sendCode, verifyCode, loginSendCode,
- * loginVerifyCode, security, storeAuth, storeReceipts, aiInsight, aiChat,
+ * loginVerifyCode, security, passwordCheck, storeAuth, storeReceipts, aiInsight, aiChat,
  * aiReport, aiReportEmail, budgets } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.

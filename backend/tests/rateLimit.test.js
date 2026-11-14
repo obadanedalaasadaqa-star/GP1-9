@@ -212,6 +212,45 @@ describe('two-step sign-in limiters (default limits)', () => {
   }, SLOW * 2);
 });
 
+describe('passwordCheck limiter', () => {
+  const changePassword = (app, u, currentPassword, newPassword = 'Other@2026') =>
+    request(app).patch('/api/user/password').set(auth(u.token))
+      .send({ currentPassword, newPassword });
+  const changeEmail = (app, u, currentPassword) =>
+    request(app).patch('/api/user/me').set(auth(u.token))
+      .send({ firstName: 'Test', lastName: 'User', email: uniqueEmail(), currentPassword });
+
+  test('PATCH /password: the 6th wrong password gets 429, even with the right one', async () => {
+    const app = createApp();
+    for (let i = 0; i < 5; i++) expect((await changePassword(app, u1, 'Wrong@2026')).status).toBe(401);
+    const blocked = await changePassword(app, u1, PASSWORD);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe('Too many wrong passwords. Try again in 15 minutes.');
+    // Counted per user: u2 still gets a normal answer.
+    expect((await changePassword(app, u2, 'Wrong@2026')).status).toBe(401);
+  }, SLOW * 2);
+
+  test('PATCH /me email change: the 6th wrong password gets 429', async () => {
+    const app = createApp();
+    for (let i = 0; i < 5; i++) expect((await changeEmail(app, u1, 'Wrong@2026')).status).toBe(401);
+    expect((await changeEmail(app, u1, 'Wrong@2026')).status).toBe(429);
+  }, SLOW * 2);
+
+  test('name edits, validation errors and right passwords are not counted', async () => {
+    const u = await registerUser(makeApp());
+    const app = createApp({ rateLimit: { passwordCheck: { limit: 2 } } });
+    const rename = () => request(app).patch('/api/user/me').set(auth(u.token))
+      .send({ firstName: 'Test', lastName: 'User' });
+    for (let i = 0; i < 3; i++) expect((await rename()).status).toBe(200);
+    expect((await changePassword(app, u, PASSWORD, 'short')).status).toBe(400);
+    expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(401); // 1st counted
+    expect((await changePassword(app, u, PASSWORD, 'Other@2026')).status).toBe(200);
+    expect((await changePassword(app, u, 'Other@2026', PASSWORD)).status).toBe(200);
+    expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(401); // 2nd counted
+    expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(429);
+  }, SLOW * 2);
+});
+
 describe('register limiter', () => {
   test('the 2nd register gets 429 when the limit is 1', async () => {
     const app = createApp({ rateLimit: { register: { limit: 1 } } });

@@ -49,7 +49,7 @@ module.exports = function userRoutes(limiters) {
   // PATCH /api/user/me  — update first name, last name, and email
   // Changing the email requires the current password. Other body fields
   // (e.g. a "phone" from an old app build) are ignored.
-  router.patch('/me', async (req, res) => {
+  router.patch('/me', limiters.passwordCheck, async (req, res) => {
     const firstName = req.body?.firstName?.trim();
     const lastName  = req.body?.lastName?.trim();
     if (!firstName || !lastName) {
@@ -67,7 +67,7 @@ module.exports = function userRoutes(limiters) {
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({ error: 'Enter a valid email.' });
           }
-          const { currentPassword } = req.body;
+          const { currentPassword } = req.body ?? {};
           if (!currentPassword) {
             return res.status(400).json({ error: 'Current password is required to change your email.' });
           }
@@ -165,7 +165,7 @@ module.exports = function userRoutes(limiters) {
   });
 
   // PATCH /api/user/password — change password (requires the current one)
-  router.patch('/password', async (req, res) => {
+  router.patch('/password', limiters.passwordCheck, async (req, res) => {
     const { currentPassword, newPassword } = req.body ?? {};
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: 'Current and new password are required.' });
