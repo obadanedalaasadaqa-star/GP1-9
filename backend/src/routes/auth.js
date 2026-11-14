@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const prisma = require('../lib/prisma');
 const { passwordError } = require('../lib/password');
 const { sendEmailCode, resendWaitSeconds } = require('../lib/verification');
@@ -25,7 +25,7 @@ const SAFE_USER_SELECT = {
 };
 
 function generateSerial() {
-  const part = uuidv4().replace(/-/g, '').toUpperCase().slice(0, 10);
+  const part = randomUUID().replace(/-/g, '').toUpperCase().slice(0, 10);
   return `NXS-${part.slice(0, 5)}-${part.slice(5)}`;
 }
 
