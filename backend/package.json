@@ -12,6 +12,7 @@
     "test": "jest --runInBand",
     "store:create": "node scripts/create-store.js",
     "weekly:send": "node scripts/send-weekly.js",
+    "demo:reset": "node scripts/demo-reset.js",
     "db:studio": "npx prisma studio"
   },
   "dependencies": {

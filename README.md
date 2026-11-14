@@ -237,6 +237,30 @@ security → Two-step sign-in**.
 **Third-party data:** sign-in codes go through the same mail provider as the
 verification email (address, first name and the code).
 
+### Demo reset
+
+Puts the demo account back into a known state before a demo:
+
+```bash
+cd backend
+npm run demo:reset -- <demo email>          # dry run: prints what would be deleted
+npm run demo:reset -- <demo email> --yes    # reset
+```
+
+- **`--yes` only works for the account in `DEMO_EMAIL`** (set it in your own
+  `backend/.env`, never in the repo). Test accounts (`test_…@nexus.test`) are
+  always refused.
+- **Warning:** `backend/.env` points at the same database as the online server,
+  so this changes the live account.
+- One transaction deletes the account's receipts, AI insight/reports/usage,
+  budgets, budget alerts and codes, then adds about 30 receipts over this month
+  and the previous 5 (in the user's time zone), 3 budgets (Food is about 70%
+  used, so one Store Simulator Food receipt of 5 JD or more crosses the 80%
+  alert), sets the points to match and turns two-step sign-in off.
+- Email, password, name, serial, email verification, email settings and time
+  zone are kept, so the demo phone stays logged in. Stores are never touched
+  (`npm run store:create` stays separate).
+
 ---
 
 ## 2 — Flutter App Setup
