@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/budget_models.dart';
+import '../core/comparison_labels.dart';
 import '../core/constants.dart';
 import '../core/money.dart';
 import '../core/offline_cache.dart';
@@ -32,9 +33,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
   bool _offline = false;     // showing stats saved on the phone
   DateTime? _savedAt;
   int _requestId = 0; // ignores responses older than the latest load
-  // This month's budgets; null hides the card (not loaded, failed, or a saved
-  // list from another month).
+  // This month's budgets (never a list from another month). With no list the
+  // card shows a placeholder while a load runs, else a retry row.
   BudgetList? _budgets;
+  bool _budgetsLoading = false;
+  DateTime? _budgetsSavedAt; // set only when the list came from the phone
   int _budgetsRequestId = 0;
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
 
@@ -46,6 +49,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   @override
   void initState() {
     super.initState();
+    _budgetsLoading = true; // the first frame shows the placeholder, not the retry row
     _load();
   }
 
@@ -71,7 +75,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   /// User-started loads (opening the tab, refresh, Retry) show the saved stats
   /// at once if nothing is on screen yet, and refresh numbers in place.
   Future<void> _load({bool silent = false}) async {
-    _loadBudgets(); // in parallel; never touches the stats states
+    _loadBudgets(silent: silent); // in parallel; never touches the stats states
     final id = ++_requestId;
     final bounds = monthBounds(DateTime.now()); // picks up a month rollover
     if (!silent && _stats == null) {
@@ -110,17 +114,49 @@ class _TrendsScreenState extends State<TrendsScreen> {
     }
   }
 
-  /// The Budgets card's list. Any failure just hides the card.
-  Future<void> _loadBudgets() async {
+  /// The Budgets card's list. Shows the list saved on the phone at once when
+  /// nothing is on screen. A failure never shows a SnackBar: it keeps a list
+  /// that is on screen, else the card offers a retry. [silent] (background
+  /// refresh) never shows the placeholder.
+  Future<void> _loadBudgets({bool silent = false}) async {
     final id = ++_budgetsRequestId;
-    BudgetList? list;
+    if (!silent) {
+      setState(() => _budgetsLoading = _budgets == null);
+    }
+    if (_budgets == null) {
+      final cached = await OfflineCache.loadBudgets();
+      if (!mounted || id != _budgetsRequestId) return;
+      if (cached != null && cached.isMonthOf(DateTime.now())) {
+        final savedAt = await OfflineCache.budgetsSavedAt();
+        if (!mounted || id != _budgetsRequestId) return;
+        setState(() {
+          _budgets = cached;
+          _budgetsSavedAt = savedAt;
+          _budgetsLoading = false;
+        });
+      }
+    }
+    BudgetsResult? result;
     try {
-      list = (await ApiClient.loadBudgets()).list;
+      result = await ApiClient.loadBudgets();
     } catch (_) {
-      list = null;
+      result = null;
     }
     if (!mounted || id != _budgetsRequestId) return;
-    setState(() => _budgets = (list != null && list.isMonthOf(DateTime.now())) ? list : null);
+    final fresh = (result != null && result.list.isMonthOf(DateTime.now())) ? result.list : null;
+    setState(() {
+      if (fresh != null) {
+        _budgets = fresh;
+        _budgetsSavedAt = result!.offline ? result.savedAt : null;
+      } else if (!silent && result != null) {
+        // A list from another month (month rollover): its bars must go.
+        _budgets = null;
+        _budgetsSavedAt = null;
+      }
+      // Any other failure keeps what is on screen. With no list, ending the
+      // load turns the placeholder into the retry row.
+      _budgetsLoading = false;
+    });
   }
 
   Future<void> _openBudgets() async {
@@ -336,7 +372,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final label    = isNow
         ? '${_monthsLong[current.from.month - 1]} so far'
         : '${_monthsLong[current.from.month - 1]} ${current.from.year}';
-    final vs       = previous == null ? null : 'vs ${_monthsLong[previous.from.month - 1]}';
+    final vs       = previous == null
+        ? null
+        : trendsVsLabel(
+            previousMonth: _monthsLong[previous.from.month - 1], monthInProgress: isNow);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
@@ -373,8 +412,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
           const SizedBox(height: 16),
 
           // Budgets (only for the current month)
-          if (isNow && _budgets != null) ...[
-            _buildBudgets(_budgets!, surface, border, textPrimary, textMuted),
+          if (isNow) ...[
+            if (_budgets != null)
+              _buildBudgets(_budgets!, surface, border, textPrimary, textMuted)
+            else if (_budgetsLoading)
+              _buildBudgetsLoading(surface, border, textPrimary)
+            else
+              _buildBudgetsRetry(surface, border, textPrimary),
             const SizedBox(height: 16),
           ],
 
@@ -392,7 +436,20 @@ class _TrendsScreenState extends State<TrendsScreen> {
           _card(surface, border, child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _cardTitle('By category', textPrimary),
+              if (isNow && previous != null) ...[
+                Text('By category',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    '${_monthsLong[current.from.month - 1]} so far '
+                    '${trendsVsLabel(previousMonth: _monthsLong[previous.from.month - 1], monthInProgress: true)}',
+                    style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                ),
+              ] else
+                _cardTitle('By category', textPrimary),
               for (final c in categoryChanges(current, previous))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -491,17 +548,28 @@ class _TrendsScreenState extends State<TrendsScreen> {
         style: GoogleFonts.dmSans(
           fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gold)),
     );
+    final savedLine = Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text('Saved on this phone',
+        style: GoogleFonts.dmSans(fontSize: 11.5, color: textMuted)),
+    );
     if (list.budgets.isEmpty) {
-      return _card(surface, border, child: Row(
+      return _card(surface, border, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.savings_rounded, color: AppColors.gold, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text('Set monthly budgets',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+          Row(
+            children: [
+              const Icon(Icons.savings_rounded, color: AppColors.gold, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Set monthly budgets',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+              ),
+              edit,
+            ],
           ),
-          edit,
+          if (_budgetsSavedAt != null) savedLine,
         ],
       ));
     }
@@ -517,11 +585,63 @@ class _TrendsScreenState extends State<TrendsScreen> {
             edit,
           ],
         ),
+        if (_budgetsSavedAt != null) savedLine,
         const SizedBox(height: 8),
         for (final b in list.budgets) BudgetBar(status: b),
       ],
     ));
   }
+
+  /// Same height as a card with two budget bars, so nothing jumps.
+  Widget _buildBudgetsLoading(Color surface, Color border, Color textPrimary) {
+    Widget track() => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(width: 90, height: 10,
+            decoration: BoxDecoration(
+              color: border, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 8),
+          Container(height: 8,
+            decoration: BoxDecoration(
+              color: border, borderRadius: BorderRadius.circular(4))),
+        ],
+      ),
+    );
+    return KeyedSubtree(
+      key: const ValueKey('trends-budgets-loading'),
+      child: _card(surface, border, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Budgets',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+          const SizedBox(height: 8),
+          track(),
+          track(),
+        ],
+      )),
+    );
+  }
+
+  Widget _buildBudgetsRetry(Color surface, Color border, Color textPrimary) =>
+      GestureDetector(
+        key: const ValueKey('trends-budgets-retry'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _loadBudgets(),
+        child: _card(surface, border, child: Row(
+          children: [
+            const Icon(Icons.refresh_rounded, color: AppColors.alert, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text("Couldn't load budgets, tap to retry",
+                style: GoogleFonts.dmSans(
+                  fontSize: 13.5, fontWeight: FontWeight.w600, color: textPrimary)),
+            ),
+          ],
+        )),
+      );
 
   Widget _tileTitle(String text, Color textMuted) => Padding(
     padding: const EdgeInsets.only(bottom: 10),

@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nexus_app/core/budget_models.dart';
 import 'package:nexus_app/core/offline_cache.dart';
+import 'package:nexus_app/core/realtime_service.dart';
 import 'package:nexus_app/core/stats_model.dart';
 import 'package:nexus_app/core/theme_provider.dart';
 import 'package:nexus_app/core/trends.dart';
@@ -19,6 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/budget_fixtures.dart';
 
 const _abbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const _long = ['January','February','March','April','May','June',
+               'July','August','September','October','November','December'];
 
 /// Stats for [bounds]: older months 100 JD, the current one [current] JD
 /// (Food 60 + Supermarket 50 by default), top store KFC, average 65 (+30%).
@@ -93,7 +96,11 @@ void main() {
       await tester.pumpAndSettle();
     });
     expect(find.text('110.00 JD'), findsOneWidget);
-    expect(find.textContaining('+10% vs '), findsOneWidget);
+    // The month is in progress, so the chip says it compares with all of last month.
+    expect(find.textContaining('+10% vs all of '), findsOneWidget);
+    final now = DateTime.now();
+    expect(find.text('${_long[now.month - 1]} so far vs all of ${_long[DateTime(now.year, now.month - 1).month - 1]}'),
+        findsOneWidget); // the "By category" subtitle
     expect(find.text('2 receipts'), findsOneWidget);
     for (final b in monthBounds(DateTime.now()).take(6)) {
       expect(find.text(_abbr[b.month - 1]), findsOneWidget);
@@ -237,19 +244,131 @@ void main() {
       expect(find.text('Budgets'), findsNothing);
     });
 
-    testWidgets('/budgets fails: the card is hidden and the stats still show', (tester) async {
+    const loadingKey = ValueKey('trends-budgets-loading');
+    const retryKey = ValueKey('trends-budgets-retry');
+    http.Response budgets500(http.Request _) =>
+        http.Response(jsonEncode({'error': 'Failed to load budgets.'}), 500);
+
+    testWidgets('loading: a placeholder while /budgets is on its way, then the card', (tester) async {
+      final stats = online(budgets: [budgetJson('Food', 50, 20)]);
+      final reply = Completer<http.Response>();
+      handler = (req) => req.url.path.endsWith('/budgets') ? reply.future : stats(req);
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.byKey(loadingKey), findsOneWidget);
+      expect(find.byKey(retryKey), findsNothing);
+      expect(find.text('110.00 JD'), findsOneWidget);
+
+      reply.complete(http.Response(jsonEncode(budgetListJson(budgets: [budgetJson('Food', 50, 20)])), 200));
+      await tester.pumpAndSettle();
+      expect(find.byKey(loadingKey), findsNothing);
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+      expect(find.text('Saved on this phone'), findsNothing);
+    });
+
+    testWidgets('500 with nothing saved: the retry row; tapping it loads again', (tester) async {
       final stats = online();
-      handler = (req) async => req.url.path.endsWith('/budgets')
-          ? http.Response(jsonEncode({'error': 'Failed to load budgets.'}), 500)
-          : stats(req);
+      handler = (req) async => req.url.path.endsWith('/budgets') ? budgets500(req) : stats(req);
       await run(() async {
         await pumpTrends(tester);
         await tester.pumpAndSettle();
       });
       expect(find.text('110.00 JD'), findsOneWidget);
-      expect(find.text('Set monthly budgets'), findsNothing);
-      expect(find.text('Budgets'), findsNothing);
-      expect(find.text('Failed to load budgets.'), findsNothing); // no SnackBar either
+      expect(find.byKey(retryKey), findsOneWidget);
+      expect(find.text("Couldn't load budgets, tap to retry"), findsOneWidget);
+      expect(find.byKey(loadingKey), findsNothing);
+      expect(find.text('Failed to load budgets.'), findsNothing); // no SnackBar
+
+      final reply = Completer<http.Response>();
+      handler = (req) => req.url.path.endsWith('/budgets') ? reply.future : stats(req);
+      await run(() async {
+        await tester.tap(find.byKey(retryKey));
+        await tester.pump();
+      });
+      expect(find.byKey(loadingKey), findsOneWidget);
+      expect(find.byKey(retryKey), findsNothing);
+
+      reply.complete(http.Response(jsonEncode(budgetListJson(budgets: [budgetJson('Food', 50, 20)])), 200));
+      await tester.pumpAndSettle();
+      expect(find.text('Budgets'), findsOneWidget);
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+      expect(find.byKey(retryKey), findsNothing);
+    });
+
+    testWidgets('500 with a saved list from this month: the saved bars, no retry row', (tester) async {
+      await OfflineCache.saveBudgets(BudgetList.fromJson(budgetListJson(budgets: [budgetJson('Food', 50, 20)])));
+      final stats = online();
+      handler = (req) async => req.url.path.endsWith('/budgets') ? budgets500(req) : stats(req);
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+      expect(find.text('Saved on this phone'), findsOneWidget);
+      expect(find.byKey(retryKey), findsNothing);
+      expect(find.byKey(loadingKey), findsNothing);
+    });
+
+    testWidgets('offline with a saved list from this month: the saved bars, no retry row', (tester) async {
+      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
+      await OfflineCache.saveBudgets(BudgetList.fromJson(budgetListJson(budgets: [budgetJson('Food', 50, 20)])));
+      handler = noInternet;
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+      expect(find.text('Saved on this phone'), findsOneWidget);
+      expect(find.byKey(retryKey), findsNothing);
+    });
+
+    testWidgets('fresh start offline with only a list from another month: the retry row', (tester) async {
+      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
+      await OfflineCache.saveBudgets(BudgetList.fromJson(
+          budgetListJson(budgets: [budgetJson('Food', 50, 20)], month: '2000-01')));
+      handler = noInternet;
+      await run(() async {
+        await pumpTrends(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsNothing);
+      expect(find.byKey(retryKey), findsOneWidget);
+      expect(find.byKey(loadingKey), findsNothing);
+    });
+
+    testWidgets('a silent refresh that fails keeps the list, with no retry row', (tester) async {
+      final realtime = RealtimeService();
+      addTearDown(realtime.dispose);
+      final stats = online(budgets: [budgetJson('Food', 50, 20)]);
+      handler = stats;
+      await run(() async {
+        tester.view.physicalSize = const Size(390, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => ThemeProvider()),
+            ChangeNotifierProvider<RealtimeService>.value(value: realtime),
+          ],
+          child: const MaterialApp(home: TrendsScreen()),
+        ));
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+
+      handler = (req) async => req.url.path.endsWith('/budgets') ? budgets500(req) : stats(req);
+      await run(() async {
+        // Resume with no socket bumps refreshTick (the silent load).
+        realtime.didChangeAppLifecycleState(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.byKey(loadingKey), findsNothing);
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
+      expect(find.byKey(retryKey), findsNothing);
+      expect(find.text('Failed to load budgets.'), findsNothing);
     });
 
     testWidgets('offline: saved bars from this month show; a list from another month does not', (tester) async {
@@ -271,6 +390,7 @@ void main() {
       });
       expect(find.text('20.00 / 50.00 JD'), findsNothing);
       expect(find.text('Set monthly budgets'), findsNothing);
+      expect(find.byKey(retryKey), findsOneWidget);
       expect(find.text('110.00 JD'), findsOneWidget);
     });
   });
