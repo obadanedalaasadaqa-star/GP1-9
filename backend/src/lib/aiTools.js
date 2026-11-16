@@ -60,17 +60,30 @@ const CHAT_TOOLS = [
       limit: { type: 'integer', description: 'Optional: how many receipts, 1 to 20 (default 10).' },
     }, ['from', 'to']),
   tool('get_line_items',
-    'The items bought on receipts between two local dates (both inclusive), newest first: name, quantity, unit price and line total when the store sent them.',
+    'The items bought on receipts between two local dates (both inclusive), newest first: name, quantity, unit price and line total when the store sent them. For the most bought items over all receipts use get_top_products.',
     {
       ...RANGE_PROPS,
       store: FILTER('receipts from stores'),
       category: FILTER('receipts in categories'),
       limit: { type: 'integer', description: 'Optional: how many receipts, 1 to 10 (default 5).' },
     }, ['from', 'to']),
+  tool('get_top_products',
+    'The items the user buys most, counted over ALL their receipts (or only between two local dates when from and to are given): times bought (number of receipts), total quantity, and money spent where the store sent prices. Use it for favourite, most bought or most expensive items. sort: "times" (default) for most bought, "quantity" only when the user asks about units, "spend" for most money spent.',
+    {
+      from: { type: 'string', description: 'Optional: first local date, YYYY-MM-DD, inclusive. Give both from and to, or neither (all receipts).' },
+      to: { type: 'string', description: 'Optional: last local date, YYYY-MM-DD, inclusive.' },
+      store: FILTER('receipts from stores'),
+      category: FILTER('receipts in categories'),
+      sort: { type: 'string', enum: ['times', 'quantity', 'spend'], description: 'Optional: times (default), quantity or spend.' },
+      limit: { type: 'integer', description: 'Optional: how many items, 1 to 20 (default 10).' },
+    }, []),
 ];
 
 const TOOL_BY_NAME = new Map(CHAT_TOOLS.map((t) => [t.name, t]));
-const LIMITS = { list_receipts: { def: 10, max: 20 }, get_line_items: { def: 5, max: 10 } };
+const LIMITS = {
+  list_receipts: { def: 10, max: 20 }, get_line_items: { def: 5, max: 10 }, get_top_products: { def: 10, max: 20 },
+};
+const TOP_SORTS = ['times', 'quantity', 'spend'];
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -136,6 +149,23 @@ function validateToolInput(name, input) {
     checkRange(input.b_from, input.b_to);
     return { a_from: input.a_from, a_to: input.a_to, b_from: input.b_from, b_to: input.b_to };
   }
+  if (name === 'get_top_products') {
+    const hasFrom = input.from !== undefined && input.from !== null;
+    const hasTo = input.to !== undefined && input.to !== null;
+    if (hasFrom !== hasTo) throw new ToolInputError('Give both from and to, or neither.');
+    if (hasFrom) {
+      checkRange(input.from, input.to);
+      out.from = input.from;
+      out.to = input.to;
+    }
+    out.store = checkFilter(input.store);
+    out.category = checkFilter(input.category);
+    const sort = input.sort ?? 'times';
+    if (!TOP_SORTS.includes(sort)) throw new ToolInputError('sort must be times, quantity or spend.');
+    out.sort = sort;
+    out.limit = checkLimit(name, input.limit);
+    return out;
+  }
 
   checkRange(input.from, input.to);
   out.from = input.from;
@@ -147,15 +177,17 @@ function validateToolInput(name, input) {
     if (sort !== 'newest' && sort !== 'largest') throw new ToolInputError('sort must be newest or largest.');
     out.sort = sort;
   }
-  if (LIMITS[name]) {
-    const { def: d, max } = LIMITS[name];
-    const limit = input.limit ?? d;
-    if (!Number.isInteger(limit) || limit < 1 || limit > max) {
-      throw new ToolInputError(`limit must be a whole number from 1 to ${max}.`);
-    }
-    out.limit = limit;
-  }
+  if (LIMITS[name]) out.limit = checkLimit(name, input.limit);
   return out;
+}
+
+function checkLimit(name, value) {
+  const { def: d, max } = LIMITS[name];
+  const limit = value ?? d;
+  if (!Number.isInteger(limit) || limit < 1 || limit > max) {
+    throw new ToolInputError(`limit must be a whole number from 1 to ${max}.`);
+  }
+  return limit;
 }
 
 // ── Running ────────────────────────────────────────────────────────────────
@@ -319,6 +351,30 @@ async function lineItems(userId, input, tz, queries) {
   }, 'receipts');
 }
 
+async function topProducts(userId, input, tz, queries) {
+  const range = input.from ? localRangeToUtc(input.from, input.to, tz) : {};
+  const r = await queries.queryTopProducts(userId, {
+    fromUtc: range.fromUtc, toUtc: range.toUtc,
+    store: input.store, category: input.category, sort: input.sort, limit: input.limit,
+  });
+  return capOutput({
+    scope: input.from ? { from: input.from, to: input.to } : 'all receipts',
+    sort: input.sort,
+    receiptsChecked: r.receiptsChecked,
+    receiptsWithPrices: r.receiptsWithPrices,
+    firstReceipt: r.firstAt ? localDateOf(r.firstAt, tz) : null,
+    lastReceipt: r.lastAt ? localDateOf(r.lastAt, tz) : null,
+    products: r.products.slice(0, input.limit).map((p) => ({
+      name: cleanLabel(p.name, 60),
+      timesBought: p.timesBought,
+      quantity: p.quantity,
+      spent: p.spent == null ? null : formatAmount(p.spent),
+    })),
+    truncated: r.products.length > input.limit,
+    note: 'spent is only known for receipts sent by stores with prices.',
+  }, 'products');
+}
+
 const RUNNERS = {
   get_spending_summary: summary,
   get_category_breakdown: categoryBreakdown,
@@ -326,6 +382,7 @@ const RUNNERS = {
   compare_periods: comparePeriods,
   list_receipts: listReceipts,
   get_line_items: lineItems,
+  get_top_products: topProducts,
 };
 
 /**

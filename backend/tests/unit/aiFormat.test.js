@@ -133,6 +133,9 @@ describe('factsHash', () => {
       .not.toBe(h);
     expect(Object.isFrozen(PROMPT_VERSIONS)).toBe(true);
   });
+  test('chat prompt is version 2 (get_top_products)', () => {
+    expect(PROMPT_VERSIONS.chat).toBe(2);
+  });
 });
 
 describe('addUsage', () => {

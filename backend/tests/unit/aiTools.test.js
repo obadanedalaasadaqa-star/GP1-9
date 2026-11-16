@@ -9,7 +9,7 @@ const period = (total, count, byCategory = [], stores = []) => ({
 });
 
 // Fake queries that record every call.
-function fakeQueries({ range, ranges, receipts = [], statsRows = [] } = {}) {
+function fakeQueries({ range, ranges, receipts = [], statsRows = [], top } = {}) {
   const calls = [];
   let n = 0;
   return {
@@ -17,6 +17,10 @@ function fakeQueries({ range, ranges, receipts = [], statsRows = [] } = {}) {
     queryRange: jest.fn(async (...args) => { calls.push(['queryRange', ...args]); return ranges ? ranges[n++] : range; }),
     queryReceipts: jest.fn(async (...args) => { calls.push(['queryReceipts', ...args]); return receipts; }),
     queryStats: jest.fn(async (...args) => { calls.push(['queryStats', ...args]); return statsRows; }),
+    queryTopProducts: jest.fn(async (...args) => {
+      calls.push(['queryTopProducts', ...args]);
+      return top ?? { products: [], receiptsChecked: 0, receiptsWithPrices: 0, firstAt: null, lastAt: null };
+    }),
   };
 }
 
@@ -28,8 +32,8 @@ const msg = (fn) => {
 };
 
 describe('definitions', () => {
-  test('6 unique names, strict, closed object schemas, required lists, descriptions', () => {
-    expect(new Set(CHAT_TOOLS.map((t) => t.name)).size).toBe(6);
+  test('7 unique names, strict, closed object schemas, required lists, descriptions', () => {
+    expect(new Set(CHAT_TOOLS.map((t) => t.name)).size).toBe(7);
     const closed = (schema) => {
       if (schema.type === 'object') {
         expect(schema.additionalProperties).toBe(false);
@@ -45,6 +49,11 @@ describe('definitions', () => {
     }
     const lr = CHAT_TOOLS.find((t) => t.name === 'list_receipts').input_schema;
     expect(lr.required).toEqual(['from', 'to']);
+    const tp = CHAT_TOOLS.find((t) => t.name === 'get_top_products');
+    expect(tp.strict).toBe(true);
+    expect(tp.input_schema.required).toEqual([]);
+    expect(tp.input_schema.additionalProperties).toBe(false);
+    expect(tp.input_schema.properties.sort.enum).toEqual(['times', 'quantity', 'spend']);
   });
 });
 
@@ -89,6 +98,35 @@ describe('validateToolInput', () => {
   });
 });
 
+describe('get_top_products input', () => {
+  const v = (input) => validateToolInput('get_top_products', input);
+
+  test('no input: all receipts, sort times, limit 10', () => {
+    expect(v({})).toEqual({ store: undefined, category: undefined, sort: 'times', limit: 10 });
+  });
+
+  test('from and to: both or neither, then the shared range checks', () => {
+    expect(msg(() => v({ from: '2026-11-01' }))).toBe('Give both from and to, or neither.');
+    expect(msg(() => v({ to: '2026-11-01' }))).toBe('Give both from and to, or neither.');
+    expect(msg(() => v({ from: '2026-13-01', to: '2026-11-11' }))).toBe('Dates must be real dates written YYYY-MM-DD.');
+    expect(msg(() => v({ from: '2026-11-12', to: '2026-11-11' }))).toBe('The first date must be on or before the last date.');
+    expect(msg(() => v({ from: '2019-12-31', to: '2020-01-05' }))).toBe('Dates start from 2020-01-01.');
+    expect(msg(() => v({ from: '2024-11-11', to: '2026-11-12' }))).toBe('A date range can cover at most 731 days.');
+    expect(v(R)).toMatchObject({ from: '2026-11-01', to: '2026-11-11' });
+  });
+
+  test('sort, limit, filters, unknown field', () => {
+    expect(msg(() => v({ sort: 'cheapest' }))).toBe('sort must be times, quantity or spend.');
+    expect(v({ sort: 'spend' }).sort).toBe('spend');
+    for (const limit of [0, 21, 1.5]) {
+      expect(msg(() => v({ limit }))).toBe('limit must be a whole number from 1 to 20.');
+    }
+    expect(v({ limit: 20 }).limit).toBe(20);
+    expect(v({ store: ' Zara ', category: ' Food ' })).toMatchObject({ store: 'Zara', category: 'Food' });
+    expect(msg(() => v({ userId: 'x' }))).toBe('Unknown field: userId.');
+  });
+});
+
 describe('runTool', () => {
   test('scope: queries always get the caller user id first', async () => {
     const q = fakeQueries({ range: period(10, 1) });
@@ -98,7 +136,8 @@ describe('runTool', () => {
     await runTool('list_receipts', R, ctx(q));
     await runTool('get_line_items', R, ctx(q));
     await runTool('get_monthly_totals', { from_month: '2026-09', to_month: '2026-11' }, ctx(q));
-    expect(q.calls.length).toBeGreaterThan(6);
+    await runTool('get_top_products', {}, ctx(q));
+    expect(q.calls.length).toBeGreaterThan(7);
     for (const call of q.calls) expect(call[1]).toBe('U1');
   });
 
@@ -188,6 +227,60 @@ describe('runTool', () => {
       { month: 'October 2026', total: '0.00', receipts: 0 },
       { month: 'November 2026', total: '287.99', receipts: 7 },
     ]);
+  });
+
+  test('get_top_products: no dates means all receipts, the validated sort, clean output', async () => {
+    const q = fakeQueries({
+      top: {
+        products: [
+          { name: 'Milk', timesBought: 4, quantity: 7, spent: 2.3, pricedLines: 2, id: 'P-1', userId: 'U-SECRET' },
+          { name: 'Bread\u0007' + 'x'.repeat(80), timesBought: 3, quantity: 3, spent: null, pricedLines: 0 },
+        ],
+        receiptsChecked: 17, receiptsWithPrices: 3,
+        firstAt: new Date('2023-11-15T22:30:00Z'), lastAt: new Date('2026-11-10T09:00:00Z'),
+      },
+    });
+    const out = await runTool('get_top_products', {}, ctx(q));
+    expect(q.calls[0][2]).toEqual({
+      fromUtc: undefined, toUtc: undefined, store: undefined, category: undefined, sort: 'times', limit: 10,
+    });
+    expect(out.scope).toBe('all receipts');
+    expect(out.sort).toBe('times');
+    expect(out.receiptsChecked).toBe(17);
+    expect(out.receiptsWithPrices).toBe(3);
+    expect(out.firstReceipt).toBe('2023-11-16'); // local date (UTC+3)
+    expect(out.lastReceipt).toBe('2026-11-10');
+    expect(out.products[0]).toEqual({ name: 'Milk', timesBought: 4, quantity: 7, spent: '2.30' });
+    expect(out.products[1].spent).toBeNull();
+    expect([...out.products[1].name].length).toBeLessThanOrEqual(60);
+    expect(out.products[1].name).not.toMatch(/\u0007/);
+    expect(out.truncated).toBe(false);
+    expect(out.note).toMatch(/spent is only known/);
+    expect(JSON.stringify(out)).not.toMatch(/P-1|U-SECRET|pricedLines/);
+  });
+
+  test('get_top_products: dates go to UTC bounds; limit + 1 rows mark it truncated', async () => {
+    const products = Array.from({ length: 3 }, (_, i) => ({ name: `P${i}`, timesBought: 3 - i, quantity: 1, spent: null }));
+    const q = fakeQueries({ top: { products, receiptsChecked: 3, receiptsWithPrices: 0, firstAt: null, lastAt: null } });
+    const out = await runTool('get_top_products', { ...R, sort: 'quantity', limit: 2 }, ctx(q));
+    expect(q.calls[0][2].fromUtc.toISOString()).toBe('2026-10-31T21:00:00.000Z');
+    expect(q.calls[0][2].toUtc.toISOString()).toBe('2026-11-11T21:00:00.000Z');
+    expect(q.calls[0][2].sort).toBe('quantity');
+    expect(out.scope).toEqual({ from: '2026-11-01', to: '2026-11-11' });
+    expect(out.sort).toBe('quantity');
+    expect(out.products).toHaveLength(2);
+    expect(out.truncated).toBe(true);
+    expect(out.firstReceipt).toBeNull();
+  });
+
+  test('get_top_products: the worst case (20 items, 60 four-byte runes each) stays under 8 KB', async () => {
+    // 20 items x 60 runes can't reach the cap, so capOutput never has to cut.
+    const products = Array.from({ length: 21 }, () => ({ name: '😀'.repeat(80), timesBought: 999, quantity: 99999.999, spent: 99999.999 }));
+    const q = fakeQueries({ top: { products, receiptsChecked: 1, receiptsWithPrices: 1, firstAt: null, lastAt: null } });
+    const out = await runTool('get_top_products', { limit: 20 }, ctx(q));
+    expect(out.products).toHaveLength(20);
+    expect(out.truncated).toBe(true); // 21 rows came back for limit 20
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
   });
 
   test('bad input never reaches a query', async () => {

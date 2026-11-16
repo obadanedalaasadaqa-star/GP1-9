@@ -104,6 +104,10 @@ The startup log says what is active (`AI: claude-haiku-5-5 (fallbacks off)`).
   them. A guard rejects any answer that states an amount or percentage the
   server did not give it (insight/report: 502 or "AI unavailable"; Ask AI: one
   repair turn, then an error).
+- **Ask AI tools (7):** spending summary, category breakdown, monthly totals,
+  compare periods, list receipts, line items and `get_top_products` (most bought
+  items over all receipts). Answers carry a `chart` built by the server from the
+  tool results (`lib/aiChart.js`), or `chart: null`.
 - **Insight cache:** one per user; reused while the numbers are unchanged and it
   is under 24 h old, so a second request costs nothing. A new receipt changes
   the numbers, so the next request writes a new one.
@@ -329,7 +333,7 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | GET | `/api/store/me` | Store login: check a store key |
 | POST | `/api/store/receipts` | Store sends a receipt to a customer serial |
 | GET | `/api/ai/insight?bounds=…` | AI summary + tip for this month (same bounds as stats; cached 24 h) |
-| POST | `/api/ai/chat` | Ask AI: `{ question, history?, tzOffsetMinutes? }` → `{ answer, toolsUsed, remainingToday }` |
+| POST | `/api/ai/chat` | Ask AI: `{ question, history?, tzOffsetMinutes? }` → `{ answer, toolsUsed, remainingToday, chart }` (`chart`: bars / columns / compare, or null) |
 | GET | `/api/ai/report?period=…` | Spending report: `1m`, `3m`, `6m`, `1y` or `custom&from=YYYY-MM-DD&to=YYYY-MM-DD` |
 | POST | `/api/ai/report/email` | Email the report to the verified address |
 | GET | `/api/budgets?tzOffsetMinutes=` | This month's budgets with spent/percent/level, and the categories to pick from |

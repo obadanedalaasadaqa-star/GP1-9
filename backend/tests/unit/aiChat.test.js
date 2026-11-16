@@ -1,6 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const {
-  answerQuestion, REFUSAL_TEXT, REPAIR_TEXT, TOO_MANY_LOOKUPS, todayLine,
+  answerQuestion, REFUSAL_TEXT, REPAIR_TEXT, TOO_MANY_LOOKUPS, todayLine, CHAT_SYSTEM,
 } = require('../../src/lib/aiChat');
 const { CHAT_TOOLS } = require('../../src/lib/aiTools');
 const { AiError } = require('../../src/lib/aiFormat');
@@ -17,12 +17,20 @@ function fakeQueries() {
       q.calls++;
       return {
         total: 287.99, count: 7, average: 41.141,
-        byCategory: [{ category: 'Food', total: 31.25, count: 2 }],
+        byCategory: [{ category: 'Food', total: 31.25, count: 2 }, { category: 'Pharmacy', total: 23, count: 1 }],
         stores: [{ storeName: 'iStore', total: 89.99, count: 1 }],
       };
     }),
     queryReceipts: jest.fn(async () => []),
     queryStats: jest.fn(async () => []),
+    queryTopProducts: jest.fn(async () => ({
+      products: [
+        { name: 'Milk', timesBought: 6, quantity: 6, spent: null },
+        { name: 'Bread', timesBought: 5, quantity: 5, spent: null },
+      ],
+      receiptsChecked: 31, receiptsWithPrices: 0,
+      firstAt: new Date('2026-06-01T09:00:00Z'), lastAt: new Date('2026-11-10T09:00:00Z'),
+    })),
   };
   return q;
 }
@@ -109,6 +117,64 @@ describe('tool loop', () => {
     expect(ai.seen[1].messages.at(-1).content[0]).toMatchObject(
       { is_error: true, content: 'Dates must be real dates written YYYY-MM-DD.' });
     expect(ai.seen[2].messages.at(-1).content[0]).toMatchObject({ is_error: true, content: 'Could not load this data.' });
+  });
+});
+
+describe('chart', () => {
+  test('built from the tool runs: category breakdown → bars', async () => {
+    ai.next(() => toolReply([toolUse('c1', 'get_category_breakdown', SUMMARY)]));
+    ai.next(() => reply([text('Food was 31.25 JD.')]));
+    const out = await ask(ai, queries);
+    expect(out.chart).toEqual({
+      kind: 'bars', title: 'By category · 1 – 11 Nov 2026', unit: 'JD',
+      items: [{ label: 'Food', value: 31.25, note: '11%' }, { label: 'Pharmacy', value: 23, note: '8%' }],
+    });
+  });
+
+  test('get_top_products with input {} (no sort) → unit times', async () => {
+    ai.next(() => toolReply([toolUse('p1', 'get_top_products', {})]));
+    ai.next(() => reply([text('You buy Milk most, on 6 receipts.')]));
+    const out = await ask(ai, queries);
+    expect(out.chart).toMatchObject({ kind: 'bars', unit: 'times', title: 'Most bought · all receipts' });
+    expect(out.chart.items.map((i) => i.value)).toEqual([6, 5]);
+  });
+
+  test('refusal and no tools → chart null', async () => {
+    ai.next(() => reply([], { stop_reason: 'refusal', stop_details: { type: 'refusal' } }));
+    expect((await ask(ai, queries)).chart).toBeNull();
+    ai.next(() => reply([text('I can help with your Nexus spending.')]));
+    expect((await ask(ai, queries)).chart).toBeNull();
+  });
+
+  test('a tool that errored is not used for the chart', async () => {
+    ai.next(() => toolReply([
+      toolUse('e1', 'get_category_breakdown', SUMMARY),
+      toolUse('e2', 'get_top_products', { sort: 'bad' }),
+    ]));
+    ai.next(() => reply([text('Food was 31.25 JD.')]));
+    const out = await ask(ai, queries);
+    expect(out.chart.title).toBe('By category · 1 – 11 Nov 2026');
+  });
+
+  test('buildChart throwing → the answer still returns, chart null', async () => {
+    let answerWithMock;
+    jest.isolateModules(() => {
+      jest.doMock('../../src/lib/aiChart', () => ({ buildChart: () => { throw new Error('boom'); } }));
+      ({ answerQuestion: answerWithMock } = require('../../src/lib/aiChat'));
+    });
+    jest.dontMock('../../src/lib/aiChart');
+    ai.next(() => toolReply([toolUse('c1', 'get_category_breakdown', SUMMARY)]));
+    ai.next(() => reply([text('Food was 31.25 JD.')]));
+    const out = await answerWithMock(ai.client, {
+      userId: USER, tz: 180, history: [], question: 'How much did I spend this month?', now: NOW, queries,
+    });
+    expect(out.answer).toBe('Food was 31.25 JD.');
+    expect(out.chart).toBeNull();
+    expect(console.error).toHaveBeenCalledWith('[ai/chat] chart', 'boom');
+  });
+
+  test('the system prompt mentions get_top_products', () => {
+    expect(CHAT_SYSTEM).toContain('get_top_products');
   });
 });
 

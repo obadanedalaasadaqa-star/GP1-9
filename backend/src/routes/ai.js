@@ -165,7 +165,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
       if (!getAiClient()) return res.status(503).json({ error: 'Ask AI is not set up on this server.' });
 
       if (await spendingQueries.countReceipts(req.userId) === 0) {
-        return res.json({ answer: NO_RECEIPTS_ANSWER, toolsUsed: [], remainingToday: null });
+        return res.json({ answer: NO_RECEIPTS_ANSWER, toolsUsed: [], remainingToday: null, chart: null });
       }
       res.locals.chat = { question, history, tz };
       next();
@@ -202,7 +202,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
       const u = info.usage ?? { input: 0, output: 0, cacheRead: 0 };
       console.log(`[ai/chat] user=${req.userId} calls=${info.calls ?? 0} ` +
         `tools=${(result?.toolsUsed ?? []).join(',') || '-'} in=${u.input} out=${u.output} ` +
-        `cacheRead=${u.cacheRead ?? 0} ${Date.now() - started}ms` +
+        `cacheRead=${u.cacheRead ?? 0} chart=${result?.chart?.kind ?? '-'} ${Date.now() - started}ms` +
         (failure ? ` reason=${mapped?.reason ?? 'error'}` : result.refused ? ' reason=refusal' : ''));
 
       if (failure) {
@@ -212,7 +212,9 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
         }
         return res.status(mapped.status).json({ error: mapped.error });
       }
-      res.json({ answer: result.answer, toolsUsed: result.toolsUsed, remainingToday: remaining });
+      res.json({
+        answer: result.answer, toolsUsed: result.toolsUsed, remainingToday: remaining, chart: result.chart ?? null,
+      });
     } catch (err) {
       console.error('[ai/chat]', err);
       res.status(500).json({ error: 'Failed to answer.' });

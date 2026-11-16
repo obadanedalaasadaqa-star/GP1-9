@@ -104,7 +104,7 @@ function numbersOk(text, sources, { smallMax = 12, years = false } = {}) {
 
 // Bump a kind's number whenever its system prompt or schema changes, so saved
 // texts are written again once.
-const PROMPT_VERSIONS = Object.freeze({ insight: 1, chat: 1, report: 1 });
+const PROMPT_VERSIONS = Object.freeze({ insight: 1, chat: 2, report: 1 });
 
 // SHA-256 of what decides the AI text: prompt version, kind, model and facts.
 function factsHash(facts, model, kind, versions = PROMPT_VERSIONS) {

@@ -8,6 +8,7 @@ const { makeFakeAi, reply, text, toolUse } = require('./fakeAi');
 const { REFUSAL_TEXT } = require('../src/lib/aiChat');
 const { takeQuota, recordTokens } = require('../src/lib/aiUsage');
 const { auth, seededUser, usageRow } = require('./aiHelpers');
+const { rangeLabel } = require('../src/lib/aiDates');
 
 const SLOW = 120_000;
 
@@ -34,8 +35,20 @@ describe('POST /api/ai/chat', () => {
   test('C-1 done-when: the demo answer comes from the tool result', async () => {
     const res = await askQ(seeded.token);
     expect(res.status).toBe(200);
+    // The dates of the tool call the fake made (this month, 1st to today).
+    const { from, to } = ai.seen[1].messages[1].content.find((b) => b.type === 'tool_use').input;
     expect(res.body).toEqual({
       answer: 'So far this month you spent 287.99 JD.', toolsUsed: ['get_spending_summary'], remainingToday: 29,
+      chart: {
+        kind: 'bars', title: `Top stores · ${rangeLabel(from, to)}`, unit: 'JD',
+        items: [
+          { label: 'iStore', value: 89.99 },
+          { label: 'Zara', value: 67 },
+          { label: 'Carrefour', value: 45.5 },
+          { label: 'Co-op Supermarket', value: 31.25 },
+          { label: 'City Pharmacy', value: 23 },
+        ],
+      },
     });
     const result = ai.seen[1].messages.at(-1).content[0];
     expect(result.content).toContain('"total":"287.99"');
@@ -134,7 +147,7 @@ describe('POST /api/ai/chat', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       answer: "You don't have any receipts in Nexus yet. Scan your QR code at a store or add a receipt, then ask me again.",
-      toolsUsed: [], remainingToday: null,
+      toolsUsed: [], remainingToday: null, chart: null,
     });
     expect(ai.create).not.toHaveBeenCalled();
     expect(await usageRow(u.user.id, 'chat')).toBeNull();
@@ -232,6 +245,59 @@ describe('POST /api/ai/chat', () => {
     ai.next(() => reply([], { stop_reason: 'refusal' }));
     expect((await askQ(u.token)).status).toBe(200);
     expect(await usageRow(u.user.id, 'chat')).toEqual({ count: 2, inputTokens: 2100, outputTokens: 1200 });
+  }, SLOW);
+
+  test('C-18 top products: a times chart equal to the tool result', async () => {
+    const u = await seededUser(app);
+    ai.next(() => reply([toolUse('tp1', 'get_top_products', {})], { stop_reason: 'tool_use' }));
+    ai.next(() => reply([text('These are the items you buy most.')]));
+    const res = await askQ(u.token, 'What do I buy most?');
+    expect(res.status).toBe(200);
+    expect(res.body.toolsUsed).toEqual(['get_top_products']);
+    const out = JSON.parse(ai.seen[1].messages.at(-1).content[0].content);
+    expect(out.scope).toBe('all receipts');
+    expect(out.sort).toBe('times');
+    expect(res.body.chart).toMatchObject({ kind: 'bars', unit: 'times', title: 'Most bought · all receipts' });
+    expect(res.body.chart.items).toEqual(
+      out.products.slice(0, 8).map((p) => ({ label: p.name, value: p.timesBought })));
+    expect(res.body.chart.items.length).toBeGreaterThanOrEqual(2);
+  }, SLOW);
+
+  test('C-19 compare_periods: a compare chart with the tool totals', async () => {
+    ai.next((req) => {
+      const { from, to } = thisMonth(req);
+      return reply([toolUse('cp1', 'compare_periods', { a_from: from, a_to: to, b_from: '2025-01-01', b_to: '2025-01-05' })],
+        { stop_reason: 'tool_use' });
+    });
+    ai.next(() => reply([text('This period is higher than the earlier one.')]));
+    const res = await askQ(seeded.token, 'Compare this month with early January 2025');
+    expect(res.status).toBe(200);
+    const out = JSON.parse(ai.seen[1].messages.at(-1).content[0].content);
+    expect(res.body.chart.kind).toBe('compare');
+    expect(res.body.chart.items).toEqual([]);
+    expect(res.body.chart.a.value).toBe(Number(out.a.total));
+    expect(res.body.chart.b.value).toBe(Number(out.b.total));
+    expect(res.body.chart.change).toBe(out.change);
+  }, SLOW);
+
+  test('C-20 list_receipts only: chart null', async () => {
+    ai.next((req) => reply([toolUse('lr1', 'list_receipts', thisMonth(req))], { stop_reason: 'tool_use' }));
+    ai.next(() => reply([text('Here are your latest receipts.')]));
+    const res = await askQ(seeded.token, 'Show my receipts');
+    expect(res.status).toBe(200);
+    expect(res.body.toolsUsed).toEqual(['list_receipts']);
+    expect(res.body.chart).toBeNull();
+  }, SLOW);
+
+  test('C-21 history items with a chart key are rejected (the app must not send charts back)', async () => {
+    const res = await ask(seeded.token, {
+      question: QUESTION, tzOffsetMinutes: 180,
+      history: [
+        { role: 'user', text: 'Hi' },
+        { role: 'assistant', text: 'Hello', chart: { kind: 'bars', title: 'x', unit: 'JD', items: [] } },
+      ],
+    });
+    expect([res.status, res.body]).toEqual([400, { error: 'Invalid chat history.' }]);
   }, SLOW);
 
   test('C-17 recordTokens is an upsert; a bad kind is only logged', async () => {

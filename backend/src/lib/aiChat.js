@@ -4,6 +4,7 @@ const { createMessage } = require('./ai');
 const { AiError, addUsage, numbersOk } = require('./aiFormat');
 const { CHAT_TOOLS, ToolInputError, runTool } = require('./aiTools');
 const { todayLocal, longDate } = require('./aiDates');
+const { buildChart } = require('./aiChart');
 
 const MAX_CALLS = 6;           // model calls per question, including one repair
 const MAX_TOOL_RUNS = 10;      // tool executions per question, across all calls
@@ -20,6 +21,7 @@ const CHAT_SYSTEM = [
   'Rules:',
   '- For any question about amounts, receipts, stores, categories, items or dates, call one or more tools first. Never guess or estimate.',
   '- Quote numbers exactly as the tools return them, with "JD" after amounts. Do not add, subtract, average, round or convert numbers yourself. To compare two periods, call compare_periods. For a total over a period, call get_spending_summary.',
+  '- For the items the user buys most (favourites, most bought, most spent on), call get_top_products; it counts all receipts unless you give dates.',
   '- Dates are the user\'s local dates. "This month" means from the 1st of the current month to today. A month named without a year means its most recent occurrence up to today. Tool dates are inclusive.',
   '- If a tool returns no receipts, say so plainly.',
   '- Advice on saving must be based on the user\'s own categories and stores from the tools. Give practical tips about spending habits only, not investment, loan or tax advice.',
@@ -36,7 +38,8 @@ function todayLine(now, tz) {
 
 /**
  * Answer [question] for [userId]. history: earlier { role, text } turns
- * (plain text). Returns { answer, toolsUsed, usage, calls, refused? }.
+ * (plain text). Returns { answer, toolsUsed, usage, calls, chart, refused? };
+ * chart is built from the tool runs that succeeded (aiChart.js), or null.
  * Throws AiError or an SDK error; every thrown error carries `usage` (the
  * tokens already paid) and `calls`.
  */
@@ -53,6 +56,7 @@ async function answerQuestion(aiClient, { userId, tz, history, question, now = n
   ];
   const sources = [question, ...history.map((m) => m.text)]; // numbers the answer may quote
   const toolsUsed = [];
+  const runs = []; // { name, out } of every tool run that succeeded, for the chart
   const usage = { input: 0, output: 0, cacheRead: 0 };
   let repaired = false;
   let toolRuns = 0;
@@ -70,7 +74,7 @@ async function answerQuestion(aiClient, { userId, tz, history, question, now = n
       }, { timeout: Math.min(20000, left), maxRetries: 0 });
       addUsage(usage, res.usage);
 
-      if (res.stop_reason === 'refusal') return { answer: REFUSAL_TEXT, toolsUsed, usage, calls, refused: true };
+      if (res.stop_reason === 'refusal') return { answer: REFUSAL_TEXT, toolsUsed, usage, calls, chart: null, refused: true };
       if (res.stop_reason === 'max_tokens') throw new AiError('max_tokens');
       messages.push({ role: 'assistant', content: res.content }); // full content, thinking blocks unchanged
 
@@ -86,6 +90,7 @@ async function answerQuestion(aiClient, { userId, tz, history, question, now = n
           try {
             const out = await runTool(block.name, block.input, { userId, tz, now, queries });
             const text = JSON.stringify(out);
+            runs.push({ name: block.name, out });
             sources.push(text);
             results.push({ type: 'tool_result', tool_use_id: block.id, content: text });
           } catch (err) {
@@ -102,7 +107,15 @@ async function answerQuestion(aiClient, { userId, tz, history, question, now = n
       const answer = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
       if (!answer) throw new AiError('no_text');
       if ([...answer].length > MAX_ANSWER) throw new AiError('bad_fields');
-      if (numbersOk(answer, sources, { smallMax: 31, years: true })) return { answer, toolsUsed, usage, calls };
+      if (numbersOk(answer, sources, { smallMax: 31, years: true })) {
+        let chart = null;
+        try {
+          chart = buildChart(runs);
+        } catch (err) { // the chart is optional; never lose a paid answer over it
+          console.error('[ai/chat] chart', err && err.message);
+        }
+        return { answer, toolsUsed, usage, calls, chart };
+      }
       if (repaired) throw new AiError('invented_number');
       repaired = true;
       messages.push({ role: 'user', content: REPAIR_TEXT });
