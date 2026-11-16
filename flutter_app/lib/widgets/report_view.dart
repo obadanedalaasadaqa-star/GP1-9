@@ -4,15 +4,23 @@ import 'package:provider/provider.dart';
 import '../core/ai_models.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
+import '../core/comparison_labels.dart';
 import '../core/constants.dart';
 import '../core/money.dart';
 import '../core/theme_provider.dart';
 import '../screens/verify_email_screen.dart';
+import 'charts/bar_list.dart';
+import 'charts/column_chart.dart';
+import 'charts/compare_bars.dart';
+import 'charts/count_up_text.dart';
+import 'charts/donut_chart.dart';
 import 'offline_banner.dart';
 
 /// The Report tab: a spending report for 1, 3, 6 or 12 months or chosen
 /// dates. Every number comes from the server and is printed with formatJd;
-/// the AI only adds the summary. Can be emailed to the verified address.
+/// the AI only adds the summary. The charts and the counting total are drawn
+/// from the same JSON and animate once per period (reduce motion: at once).
+/// Can be emailed to the verified address.
 class ReportView extends StatefulWidget {
   const ReportView({super.key});
 
@@ -191,7 +199,7 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
       Text(r.range.label,
         style: GoogleFonts.spaceGrotesk(fontSize: 20, fontWeight: FontWeight.w800, color: c.primary)),
       const SizedBox(height: 2),
-      Text('compared with ${r.previous.label}', style: GoogleFonts.dmSans(fontSize: 12.5, color: c.muted)),
+      Text(reportComparedWith(r.range, r.previous), style: GoogleFonts.dmSans(fontSize: 12.5, color: c.muted)),
       const SizedBox(height: 16),
 
       // 2. AI summary
@@ -202,9 +210,9 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
         _card(c, child: Text('No receipts in this period.',
           style: GoogleFonts.dmSans(fontSize: 14, color: c.primary)))
       else ...[
-        // 3. Totals
+        // 3. Totals (counts up once)
         _card(c, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${formatJd(r.totals.total)} JD',
+          CountUpText(r.totals.total, key: ValueKey('total-${_request.cacheKey}'),
             style: GoogleFonts.spaceGrotesk(fontSize: 32, fontWeight: FontWeight.w800, color: c.primary)),
           const SizedBox(height: 6),
           Text('${r.totals.receipts} receipt${r.totals.receipts == 1 ? '' : 's'} · '
@@ -213,53 +221,83 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
         ])),
         const SizedBox(height: 16),
 
-        // 4. Comparison
-        _card(c, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _title('Compared with the previous period', c),
+        // 4. Comparison: two bars, the exact numbers stay as rows below
+        _card(c, key: const ValueKey('report-compare'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _title('This period vs before', c),
+          CompareBars(
+            key: ValueKey('compare-${_request.cacheKey}'),
+            aLabel: 'This period', aValue: r.totals.total,
+            bLabel: 'Before', bValue: r.comparison.previousTotal,
+            showValues: false, showChange: false,
+          ),
+          const SizedBox(height: 12),
           _row('Previous total', '${formatJd(r.comparison.previousTotal)} JD', c),
           _row('Difference', '${diff > 0 ? '+' : diff < 0 ? '−' : ''}${formatJd(diff.abs())} JD', c),
           _row('Change', r.comparison.changeLabel, c),
         ])),
         const SizedBox(height: 16),
 
-        // 5. Categories
-        _card(c, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 5. Categories: donut + one legend row per category
+        _card(c, key: const ValueKey('report-donut'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _title('By category', c),
+          Center(
+            child: DonutChart(
+              key: ValueKey('donut-${_request.cacheKey}'),
+              slices: [
+                for (final cat in r.byCategory)
+                  DonutSlice(cat.category, cat.total, CategoryColors.of(cat.category)),
+              ],
+              center: Text(
+                '${r.byCategory.length} ${r.byCategory.length == 1 ? 'category' : 'categories'}',
+                style: GoogleFonts.dmSans(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)),
+            ),
+          ),
+          const SizedBox(height: 16),
           for (final cat in r.byCategory) ...[
             Row(children: [
+              Container(width: 10, height: 10,
+                decoration: BoxDecoration(color: CategoryColors.of(cat.category), shape: BoxShape.circle)),
+              const SizedBox(width: 10),
               Expanded(child: Text(cat.category, style: GoogleFonts.dmSans(fontSize: 13.5, color: c.primary))),
               Text('${formatJd(cat.total)} JD', style: GoogleFonts.dmSans(fontSize: 13.5, color: c.primary)),
               const SizedBox(width: 10),
               SizedBox(width: 40, child: Text('${cat.sharePercent}%', textAlign: TextAlign.right,
                 style: GoogleFonts.dmSans(fontSize: 12.5, color: c.muted))),
             ]),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: cat.sharePercent / 100, minHeight: 6,
-                color: CategoryColors.of(cat.category), backgroundColor: c.border),
+            Padding(
+              padding: const EdgeInsets.only(left: 20, top: 2, bottom: 10),
+              child: Text('${cat.receipts} receipt${cat.receipts == 1 ? '' : 's'}',
+                style: GoogleFonts.dmSans(fontSize: 11.5, color: c.muted)),
             ),
-            const SizedBox(height: 4),
-            Text('${cat.receipts} receipt${cat.receipts == 1 ? '' : 's'}',
-              style: GoogleFonts.dmSans(fontSize: 11.5, color: c.muted)),
-            const SizedBox(height: 12),
           ],
         ])),
         const SizedBox(height: 16),
 
-        // 6. Months
-        _card(c, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 6. Months: columns (the month in progress in gold), then the rows
+        _card(c, key: const ValueKey('report-months'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _title('By month', c),
+          ColumnChart(
+            key: ValueKey('months-${_request.cacheKey}'),
+            items: [
+              for (final m in r.byMonth)
+                ColumnItem(_shortMonth(m.month), m.total, formatJd(m.total, decimals: 0), highlight: m.partial),
+            ],
+          ),
+          const SizedBox(height: 14),
           for (final m in r.byMonth)
             _row('${m.label}${m.partial ? ' (so far)' : ''}', '${formatJd(m.total)} JD', c),
         ])),
         const SizedBox(height: 16),
 
-        // 7. Stores and biggest receipts
-        _card(c, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 7. Stores (bars) and biggest receipts
+        _card(c, key: const ValueKey('report-stores'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _title('Top stores', c),
-          for (final s in r.topStores) _row(s.storeName, '${formatJd(s.total)} JD', c),
+          BarList(
+            key: ValueKey('stores-${_request.cacheKey}'),
+            items: [
+              for (final s in r.topStores) BarItem(s.storeName, s.total, '${formatJd(s.total)} JD'),
+            ],
+          ),
           const SizedBox(height: 12),
           _title('Biggest receipts', c),
           for (final b in r.biggestReceipts)
@@ -331,7 +369,14 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
   static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   static String _date(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
-  Widget _card(_C c, {required Widget child}) => Container(
+  /// 'Nov' for '2026-11'.
+  static String _shortMonth(String ym) {
+    final m = int.tryParse(ym.length >= 7 ? ym.substring(5, 7) : '');
+    return m == null || m < 1 || m > 12 ? ym : _months[m - 1];
+  }
+
+  Widget _card(_C c, {Key? key, required Widget child}) => Container(
+    key: key,
     width: double.infinity,
     padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
     decoration: BoxDecoration(

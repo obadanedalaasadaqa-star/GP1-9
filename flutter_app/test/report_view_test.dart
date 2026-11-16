@@ -55,7 +55,7 @@ void main() {
     }
   }
 
-  Future<void> pumpView(WidgetTester tester) async {
+  Future<void> pumpView(WidgetTester tester, {bool reduceMotion = false, bool wait = true}) async {
     tester.view.physicalSize = const Size(700, 3000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -69,9 +69,12 @@ void main() {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider.value(value: auth),
       ],
-      child: const MaterialApp(home: Scaffold(body: ReportView())),
+      child: MaterialApp(home: Builder(builder: (context) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+        child: const Scaffold(body: ReportView()),
+      ))),
     ));
-    await settle(tester);
+    if (wait) await settle(tester);
   }
 
   List<String?> periodsAsked() => requests
@@ -96,6 +99,41 @@ void main() {
       await settle(tester);
     });
     expect(periodsAsked(), ['1m', '3m']);
+  });
+
+  testWidgets('visual report: cards, comparison wording, donut centre, compare labels', (tester) async {
+    await run(() => pumpView(tester));
+    for (final k in ['report-compare', 'report-donut', 'report-months', 'report-stores']) {
+      expect(find.byKey(ValueKey(k)), findsOneWidget);
+    }
+    expect(find.text('compared with 1 – 11 Oct 2026 (same days last month)'), findsOneWidget);
+    expect(find.text('This period vs before'), findsOneWidget);
+    expect(find.text('Compared with 1 – 11 Oct 2026'), findsNothing); // the dates show once
+    expect(find.text('Compared with the previous period'), findsNothing);
+    expect(find.text('2 categories'), findsOneWidget);
+    expect(find.text('This period'), findsOneWidget);
+    expect(find.text('Before'), findsOneWidget);
+    expect(find.text('288'), findsOneWidget); // the month column, whole JD
+    expect(find.text('Nov'), findsOneWidget);
+    expect(find.text('7 receipts · average 41.14 JD'), findsOneWidget);
+  });
+
+  testWidgets('the total counts up, and ends exactly on the server number', (tester) async {
+    await run(() => pumpView(tester, wait: false));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('287.99 JD'), findsOneWidget); // only the month row so far
+    await settle(tester);
+    expect(find.text('287.99 JD'), findsNWidgets(2));
+  });
+
+  testWidgets('reduce motion: the final total right away', (tester) async {
+    await run(() async {
+      await pumpView(tester, reduceMotion: true, wait: false);
+      await tester.pump(const Duration(milliseconds: 50)); // the report request
+    });
+    await tester.pump();
+    expect(find.text('287.99 JD'), findsNWidgets(2)); // total and the month row
   });
 
   testWidgets('AI unavailable: muted error, numbers still shown', (tester) async {
