@@ -67,13 +67,20 @@ class _AiScreenState extends State<AiScreen> with SingleTickerProviderStateMixin
     final initial = AiScreen.tabs.indexOf(widget.initialTab);
     _tabs = TabController(length: AiScreen.tabs.length, vsync: this, initialIndex: initial < 0 ? 0 : initial);
     _tabs.addListener(() {
+      // The keyboard belongs to the Ask tab only: close it on any other tab.
+      if (AiScreen.tabs[_tabs.index] != AiTab.ask) _hideKeyboard();
       if (mounted) setState(() {}); // the "New chat" action follows the tab
     });
     _input = TextEditingController(text: widget.draft ?? '');
   }
 
+  // Leaving the page with the Ask field focused could leave the iOS keyboard
+  // open on Home (bug 2026-11-16), so every way out closes it first.
+  void _hideKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
   @override
   void dispose() {
+    _hideKeyboard();
     _tabs.dispose();
     _input.dispose();
     super.dispose();
@@ -99,66 +106,70 @@ class _AiScreenState extends State<AiScreen> with SingleTickerProviderStateMixin
     final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
     final onAsk = AiScreen.tabs[_tabs.index] == AiTab.ask;
 
-    return Scaffold(
-      backgroundColor: bg,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 12, 12, 4),
-              child: Row(children: [
-                IconButton(
-                  tooltip: 'Back',
-                  icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text('AI insights',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 24, fontWeight: FontWeight.w800, color: textPrimary, letterSpacing: -0.5)),
-                ),
-                if (onAsk && chat.messages.isNotEmpty)
+    return PopScope(
+      // Runs for the back button, the iOS swipe-back and Android back alike.
+      onPopInvokedWithResult: (_, _) => _hideKeyboard(),
+      child: Scaffold(
+        backgroundColor: bg,
+        resizeToAvoidBottomInset: true,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 12, 12, 4),
+                child: Row(children: [
                   IconButton(
-                    tooltip: 'New chat',
-                    icon: const Icon(Icons.refresh_rounded, color: AppColors.gold),
-                    onPressed: chat.sending ? null : chat.clear,
+                    tooltip: 'Back',
+                    icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
+                    onPressed: () => Navigator.of(context).maybePop(),
                   ),
-                ShaderMask(
-                  shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-                  child: const Icon(Icons.auto_awesome_rounded, size: 24, color: Colors.white),
-                ),
-                const SizedBox(width: 8),
-              ]),
-            ),
-            TabBar(
-              controller: _tabs,
-              indicatorColor: AppColors.gold,
-              labelColor: AppColors.gold,
-              unselectedLabelColor: textMuted,
-              labelStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w700),
-              unselectedLabelStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w500),
-              tabs: [for (final t in AiScreen.tabs) Tab(text: _label(t))],
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabs,
-                children: [
-                  for (final t in AiScreen.tabs)
-                    switch (t) {
-                      AiTab.insight => _InsightTab(
-                          insightKey: _insightKey,
-                          onSuggest: _suggest,
-                          onReport: AiScreen.tabs.contains(AiTab.report) ? () => _goTo(AiTab.report) : null,
-                        ),
-                      AiTab.ask => AiChatView(controller: _input),
-                      AiTab.report => const ReportView(),
-                    },
-                ],
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text('AI insights',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 24, fontWeight: FontWeight.w800, color: textPrimary, letterSpacing: -0.5)),
+                  ),
+                  if (onAsk && chat.messages.isNotEmpty)
+                    IconButton(
+                      tooltip: 'New chat',
+                      icon: const Icon(Icons.refresh_rounded, color: AppColors.gold),
+                      onPressed: chat.sending ? null : chat.clear,
+                    ),
+                  ShaderMask(
+                    shaderCallback: (b) => AppColors.goldGlow.createShader(b),
+                    child: const Icon(Icons.auto_awesome_rounded, size: 24, color: Colors.white),
+                  ),
+                  const SizedBox(width: 8),
+                ]),
               ),
-            ),
-          ],
+              TabBar(
+                controller: _tabs,
+                indicatorColor: AppColors.gold,
+                labelColor: AppColors.gold,
+                unselectedLabelColor: textMuted,
+                labelStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w700),
+                unselectedLabelStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w500),
+                tabs: [for (final t in AiScreen.tabs) Tab(text: _label(t))],
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabs,
+                  children: [
+                    for (final t in AiScreen.tabs)
+                      switch (t) {
+                        AiTab.insight => _InsightTab(
+                            insightKey: _insightKey,
+                            onSuggest: _suggest,
+                            onReport: AiScreen.tabs.contains(AiTab.report) ? () => _goTo(AiTab.report) : null,
+                          ),
+                        AiTab.ask => AiChatView(controller: _input),
+                        AiTab.report => const ReportView(),
+                      },
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

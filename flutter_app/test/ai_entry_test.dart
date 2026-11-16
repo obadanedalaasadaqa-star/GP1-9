@@ -104,6 +104,42 @@ void main() {
     expect(find.text('Ask about your spending'), findsOneWidget);
   });
 
+  // Bug 2026-11-16: the keyboard stayed open on Home after leaving the AI page.
+  for (final how in ['back button', 'system back']) {
+    testWidgets('leaving the AI page by $how closes the keyboard', (tester) async {
+      await run(() async {
+        await pumpScreen(tester, const DashboardScreen());
+        await tester.tap(find.text('Ask AI'));
+        await settle(tester);
+        await tester.tap(find.byType(TextField));
+        await tester.pump();
+        expect(tester.testTextInput.isVisible, isTrue);
+        if (how == 'back button') {
+          await tester.tap(find.byTooltip('Back'));
+        } else {
+          await tester.binding.handlePopRoute();
+        }
+        await settle(tester);
+      });
+      expect(find.byType(AiScreen), findsNothing);
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+  }
+
+  testWidgets('switching from Ask to another AI tab closes the keyboard', (tester) async {
+    await run(() async {
+      await pumpScreen(tester, const DashboardScreen());
+      await tester.tap(find.text('Ask AI'));
+      await settle(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.tap(find.text('Report'));
+      await settle(tester);
+    });
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
   testWidgets('the Trends AI button opens the page, also when Trends is empty', (tester) async {
     await run(() async {
       await pumpScreen(tester, const TrendsScreen());
