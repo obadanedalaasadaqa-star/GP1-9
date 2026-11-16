@@ -6,6 +6,7 @@ import '../core/ai_chat_session.dart';
 import '../core/ai_models.dart';
 import '../core/constants.dart';
 import '../core/theme_provider.dart';
+import 'charts/chat_chart_view.dart';
 
 /// Cuts the text to [max] code points (runes), the unit the server counts,
 /// so emoji count as one character. A long paste is cut, not dropped.
@@ -261,6 +262,7 @@ class _Bubble extends StatelessWidget {
                 Text(message.text, style: style)
               else
                 SelectableText(message.text, style: style),
+              if (message.chart != null) ChatChartView(chart: message.chart!),
               if (message.isError && message.retryQuestion != null)
                 TextButton(
                   onPressed: onRetry,

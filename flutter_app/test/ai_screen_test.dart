@@ -129,6 +129,42 @@ void main() {
     semantics.dispose();
   });
 
+  Future<void> askOnce(WidgetTester tester, String question) async {
+    await run(() async {
+      await pumpHome(tester, tab: AiTab.ask);
+      await tester.enterText(find.byType(TextField), question);
+      await tester.pump();
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pumpAndSettle();
+    });
+  }
+
+  testWidgets('an answer with a chart draws it under the answer', (tester) async {
+    chat = (_) async => http.Response(jsonEncode({
+          'answer': 'You buy Milk most.', 'toolsUsed': ['get_top_products'], 'remainingToday': 28,
+          'chart': {
+            'kind': 'bars', 'title': 'Most bought, all receipts', 'unit': 'times',
+            'items': [{'label': 'Milk', 'value': 6}, {'label': 'Bread', 'value': 5}],
+          },
+        }), 200);
+    await askOnce(tester, 'What do I buy most?');
+    expect(find.text('You buy Milk most.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-chart')), findsOneWidget);
+    expect(find.text('Most bought, all receipts'), findsOneWidget);
+    for (final t in ['Milk', 'Bread', '6×', '5×']) {
+      expect(find.text(t), findsOneWidget);
+    }
+  });
+
+  testWidgets('an answer with chart null has no chart', (tester) async {
+    chat = (_) async => http.Response(jsonEncode({
+          'answer': answerText, 'toolsUsed': ['list_receipts'], 'remainingToday': 28, 'chart': null,
+        }), 200);
+    await askOnce(tester, 'Show my receipts');
+    expect(find.text(answerText), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-chart')), findsNothing);
+  });
+
   testWidgets('an error bubble shows "Try again", which resends', (tester) async {
     var n = 0;
     chat = (_) async => ++n == 1

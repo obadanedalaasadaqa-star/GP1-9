@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nexus_app/core/ai_models.dart';
 import 'package:nexus_app/core/api_client.dart';
+import 'package:nexus_app/core/chat_chart.dart';
 import 'package:nexus_app/core/offline_cache.dart';
 import 'package:nexus_app/core/trends.dart';
 import 'package:nexus_app/core/user_model.dart';
@@ -170,6 +171,27 @@ void main() {
       expect(body['tzOffsetMinutes'], DateTime.now().timeZoneOffset.inMinutes);
       expect(r.answer, 'So far 287.99 JD.');
       expect(r.remainingToday, 4);
+      expect(r.chart, isNull); // the reply had no chart key
+    });
+
+    test('a bars chart is parsed', () async {
+      final r = await withHttp((_) async => http.Response(jsonEncode({
+            'answer': 'Food was 31.25 JD.', 'toolsUsed': ['get_category_breakdown'], 'remainingToday': 3,
+            'chart': {
+              'kind': 'bars', 'title': 'By category this month', 'unit': 'JD',
+              'items': [{'label': 'Food', 'value': 31.25, 'note': '11%'}, {'label': 'Pharmacy', 'value': 23}],
+            },
+          }), 200), () => ApiClient.askAi('q', const []));
+      expect(r.chart!.kind, ChartKind.bars);
+      expect(r.chart!.items.map((i) => i.value), [31.25, 23]);
+    });
+
+    test('an unknown chart is null and the answer is still there', () async {
+      final r = await withHttp((_) async => http.Response(jsonEncode({
+            'answer': 'Food was 31.25 JD.', 'toolsUsed': [], 'remainingToday': 3, 'chart': {'kind': 'pie'},
+          }), 200), () => ApiClient.askAi('q', const []));
+      expect(r.chart, isNull);
+      expect(r.answer, 'Food was 31.25 JD.');
     });
 
     test('JSON 429 rethrown with the server text; timeout 408; no internet not fromServer', () async {

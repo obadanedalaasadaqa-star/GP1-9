@@ -1,5 +1,6 @@
 // Models for the AI page: the insight (GET /api/ai/insight), Ask AI chat
 // messages (POST /api/ai/chat) and spending reports (GET /api/ai/report).
+import 'chat_chart.dart';
 
 double _d(Object? v) => (v as num?)?.toDouble() ?? 0;
 int _i(Object? v) => (v as num?)?.toInt() ?? 0;
@@ -70,14 +71,19 @@ class ChatMessage {
   /// For an error bubble: the question that "Try again" sends again.
   final String? retryQuestion;
 
+  /// The chart under an answer (server-built), or null. Never sent back.
+  final ChatChart? chart;
+
   const ChatMessage({
     required this.role,
     required this.text,
     this.isError = false,
     this.retryQuestion,
+    this.chart,
   });
 
-  /// The `{ role, text }` item the server expects in `history`.
+  /// The `{ role, text }` item the server expects in `history`. Only these two
+  /// keys: the server rejects history items with any other key (e.g. a chart).
   Map<String, String> toHistoryJson() =>
       {'role': role == ChatRole.user ? 'user' : 'assistant', 'text': text};
 }

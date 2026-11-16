@@ -60,7 +60,7 @@ class AiChatSession extends ChangeNotifier {
     try {
       final reply = await ApiClient.askAi(text, history);
       if (_disposed) return;
-      _messages.add(ChatMessage(role: ChatRole.assistant, text: reply.answer));
+      _messages.add(ChatMessage(role: ChatRole.assistant, text: reply.answer, chart: reply.chart));
       _remainingToday = reply.remainingToday ?? _remainingToday;
     } on ApiException catch (e) {
       if (_disposed) return;

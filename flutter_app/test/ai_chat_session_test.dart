@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nexus_app/core/ai_chat_session.dart';
 import 'package:nexus_app/core/ai_models.dart';
+import 'package:nexus_app/core/chat_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<T> withHttp<T>(Future<http.Response> Function(http.Request) handler, Future<T> Function() body) =>
@@ -34,6 +35,38 @@ void main() {
     expect(s.messages.map((m) => m.text), ['How much?', 'So far 287.99 JD.']);
     expect(s.messages.last.role, ChatRole.assistant);
     expect(s.remainingToday, 3);
+  });
+
+  test('the chart is stored on the answer and never sent back as history', () async {
+    final s = AiChatSession();
+    final bodies = <Map<String, dynamic>>[];
+    await withHttp((req) async {
+      bodies.add(jsonDecode(req.body) as Map<String, dynamic>);
+      return http.Response(jsonEncode({
+        'answer': 'You buy Milk most.', 'toolsUsed': ['get_top_products'], 'remainingToday': 28,
+        'chart': {
+          'kind': 'bars', 'title': 'Most bought · all receipts', 'unit': 'times',
+          'items': [{'label': 'Milk', 'value': 6}, {'label': 'Bread', 'value': 5}],
+        },
+      }), 200);
+    }, () async {
+      await s.ask('What do I buy most?');
+      await s.ask('And bread?');
+    });
+    final chart = s.messages[1].chart!;
+    expect(chart.unit, ChartUnit.times);
+    expect(chart.items.map((i) => i.label), ['Milk', 'Bread']);
+    expect(s.messages[1].toHistoryJson(), {'role': 'assistant', 'text': 'You buy Milk most.'});
+    expect(bodies[1]['history'], [
+      {'role': 'user', 'text': 'What do I buy most?'},
+      {'role': 'assistant', 'text': 'You buy Milk most.'},
+    ]);
+  });
+
+  test('an answer without a chart key has chart null', () async {
+    final s = AiChatSession();
+    await withHttp((_) async => answer('So far 287.99 JD.'), () => s.ask('How much?'));
+    expect(s.messages.last.chart, isNull);
   });
 
   test('history: completed pairs only, no error bubbles, at most 10', () async {

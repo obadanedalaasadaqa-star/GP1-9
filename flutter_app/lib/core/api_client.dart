@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_models.dart';
 import 'budget_models.dart';
+import 'chat_chart.dart';
 import 'constants.dart';
 import 'login_challenge.dart';
 import 'offline_cache.dart';
@@ -556,7 +557,7 @@ class ApiClient {
   // ── Ask AI ─────────────────────────────────────────────────────
   /// Ask a question about the user's own spending. [history]: earlier
   /// completed turns, sent as plain text. No offline cache for chat.
-  static Future<({String answer, int? remainingToday})> askAi(
+  static Future<({String answer, int? remainingToday, ChatChart? chart})> askAi(
       String question, List<ChatMessage> history,
       {Duration timeout = _kChatTimeout}) async {
     final http.Response res;
@@ -581,6 +582,7 @@ class ApiClient {
     return (
       answer: data['answer'] as String,
       remainingToday: (data['remainingToday'] as num?)?.toInt(),
+      chart: ChatChart.tryParse(data['chart']), // null when missing or unknown
     );
   }
 
