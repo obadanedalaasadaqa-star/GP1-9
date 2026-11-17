@@ -74,7 +74,7 @@ void main() {
 
   test('offline: the saved list, marked offline; nothing saved: a friendly error', () async {
     await expectLater(withHttp(noInternet, ApiClient.loadBudgets), throwsA(isA<ApiException>()));
-    await OfflineCache.saveBudgets(BudgetList.fromJson(jsonDecode(listBody) as Map<String, dynamic>));
+    await OfflineCache.saveBudgets(BudgetList.fromJson(jsonDecode(listBody) as Map<String, dynamic>), generation: OfflineCache.generation);
     final res = await withHttp(noInternet, ApiClient.loadBudgets);
     expect(res.offline, isTrue);
     expect(res.savedAt, isNotNull);
@@ -82,7 +82,7 @@ void main() {
   });
 
   test('a server error is not hidden by the cache', () async {
-    await OfflineCache.saveBudgets(BudgetList.fromJson(jsonDecode(listBody) as Map<String, dynamic>));
+    await OfflineCache.saveBudgets(BudgetList.fromJson(jsonDecode(listBody) as Map<String, dynamic>), generation: OfflineCache.generation);
     await expectLater(
       withHttp((_) async => http.Response(jsonEncode({'error': 'Unauthorized'}), 401),
           ApiClient.loadBudgets),
@@ -107,7 +107,7 @@ void main() {
   });
 
   test('OfflineCache.clear() wipes the budgets', () async {
-    await OfflineCache.saveBudgets(BudgetList.fromJson(jsonDecode(listBody) as Map<String, dynamic>));
+    await OfflineCache.saveBudgets(BudgetList.fromJson(jsonDecode(listBody) as Map<String, dynamic>), generation: OfflineCache.generation);
     await OfflineCache.clear();
     expect(await OfflineCache.loadBudgets(), isNull);
     expect(await OfflineCache.budgetsSavedAt(), isNull);

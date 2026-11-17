@@ -15,6 +15,9 @@ class AuthProvider extends ChangeNotifier {
   String? _startupError;
   bool _justRegistered = false;
   bool _offline = false;
+  // +1 on every logout, login and register. A /user/me answer that arrives
+  // after one of those belongs to the old session and is dropped.
+  int _session = 0;
 
   User? get user => _user;
   bool get loading => _loading;
@@ -44,14 +47,17 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     try {
+      final session = _session;
       final token = await ApiClient.getToken();
       if (token != null) {
         _wakingServer = true;
         notifyListeners();
         try {
-          _user = await ApiClient.getMe(timeout: _kStartupTimeout);
+          final me = await ApiClient.getMe(timeout: _kStartupTimeout);
+          if (session != _session) return; // logged out or in again meanwhile
+          _user = me;
           _offline = false;
-          await _saveUser(_user!);
+          await _saveUser(me);
         } on ApiException catch (e) {
           // Only a rejected token (401) or a deleted account (JSON 404 from our
           // server) logs the user out. A non-JSON 404 means the host itself is
@@ -119,6 +125,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// Save the session and show the app (after a login or a sign-in code).
   Future<void> completeLogin(String token, User user) async {
+    _session++;
     await ApiClient.saveToken(token);
     _user = user;
     _offline = false;
@@ -138,6 +145,7 @@ class AuthProvider extends ChangeNotifier {
       email: email,
       password: password,
     );
+    _session++;
     await ApiClient.saveToken(result.token);
     _user = result.user;
     _offline = false;
@@ -147,6 +155,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _session++;
     await ApiClient.clearToken();
     await OfflineCache.clear();
     _user = null;
@@ -156,13 +165,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> refreshUser() async {
-    _user = await ApiClient.getMe();
+    final session = _session;
+    final me = await ApiClient.getMe();
+    if (session != _session) return; // a late answer for the previous session
+    _user = me;
     _offline = false;
-    await _saveUser(_user!);
+    await _saveUser(me);
     notifyListeners();
   }
 
+  /// Ignored after logout, and for another account than the signed-in one
+  /// (a save or receipt event that finished after the account changed).
   void updateUser(User updated) {
+    final current = _user;
+    if (current == null || updated.id != current.id) return;
     _user = updated;
     _saveUser(updated);
     notifyListeners();

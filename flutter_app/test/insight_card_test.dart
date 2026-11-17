@@ -35,7 +35,7 @@ void main() {
 
   Future<void> saveOld() => OfflineCache.saveInsight(Insight.fromJson({
         'status': 'ready', 'summary': 'Saved summary.', 'tip': tip, 'createdAt': '2026-11-01T09:00:00.000Z',
-      }));
+      }), generation: OfflineCache.generation);
 
   Future<void> pumpCard(WidgetTester tester, {bool compact = false, VoidCallback? onOpen, Key? key}) async {
     tester.view.physicalSize = const Size(600, 1600);

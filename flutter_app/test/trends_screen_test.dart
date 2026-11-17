@@ -114,7 +114,7 @@ void main() {
   });
 
   testWidgets('offline with saved stats: the content and the "trends" banner', (tester) async {
-    await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
+    await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))), generation: OfflineCache.generation);
     handler = noInternet;
     await run(() async {
       await pumpTrends(tester);
@@ -153,7 +153,7 @@ void main() {
 
   testWidgets('saved stats show at once, with no spinner, then the fresh ones', (tester) async {
     await OfflineCache.saveStats(
-        SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()), current: 45)));
+        SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()), current: 45)), generation: OfflineCache.generation);
     final reply = Completer<http.Response>();
     handler = (_) => reply.future;
     await run(() async {
@@ -298,7 +298,7 @@ void main() {
     });
 
     testWidgets('500 with a saved list from this month: the saved bars, no retry row', (tester) async {
-      await OfflineCache.saveBudgets(BudgetList.fromJson(budgetListJson(budgets: [budgetJson('Food', 50, 20)])));
+      await OfflineCache.saveBudgets(BudgetList.fromJson(budgetListJson(budgets: [budgetJson('Food', 50, 20)])), generation: OfflineCache.generation);
       final stats = online();
       handler = (req) async => req.url.path.endsWith('/budgets') ? budgets500(req) : stats(req);
       await run(() async {
@@ -312,8 +312,8 @@ void main() {
     });
 
     testWidgets('offline with a saved list from this month: the saved bars, no retry row', (tester) async {
-      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
-      await OfflineCache.saveBudgets(BudgetList.fromJson(budgetListJson(budgets: [budgetJson('Food', 50, 20)])));
+      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))), generation: OfflineCache.generation);
+      await OfflineCache.saveBudgets(BudgetList.fromJson(budgetListJson(budgets: [budgetJson('Food', 50, 20)])), generation: OfflineCache.generation);
       handler = noInternet;
       await run(() async {
         await pumpTrends(tester);
@@ -325,9 +325,9 @@ void main() {
     });
 
     testWidgets('fresh start offline with only a list from another month: the retry row', (tester) async {
-      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
+      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))), generation: OfflineCache.generation);
       await OfflineCache.saveBudgets(BudgetList.fromJson(
-          budgetListJson(budgets: [budgetJson('Food', 50, 20)], month: '2000-01')));
+          budgetListJson(budgets: [budgetJson('Food', 50, 20)], month: '2000-01')), generation: OfflineCache.generation);
       handler = noInternet;
       await run(() async {
         await pumpTrends(tester);
@@ -372,9 +372,9 @@ void main() {
     });
 
     testWidgets('offline: saved bars from this month show; a list from another month does not', (tester) async {
-      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))));
+      await OfflineCache.saveStats(SpendingStats.fromJson(statsJson(monthBounds(DateTime.now()))), generation: OfflineCache.generation);
       await OfflineCache.saveBudgets(BudgetList.fromJson(
-          budgetListJson(budgets: [budgetJson('Food', 50, 20)])));
+          budgetListJson(budgets: [budgetJson('Food', 50, 20)])), generation: OfflineCache.generation);
       handler = noInternet;
       await run(() async {
         await pumpTrends(tester);
@@ -383,7 +383,7 @@ void main() {
       expect(find.text('20.00 / 50.00 JD'), findsOneWidget);
 
       await OfflineCache.saveBudgets(BudgetList.fromJson(
-          budgetListJson(budgets: [budgetJson('Food', 50, 20)], month: '2000-01')));
+          budgetListJson(budgets: [budgetJson('Food', 50, 20)], month: '2000-01')), generation: OfflineCache.generation);
       await run(() async {
         await tester.tap(find.byIcon(Icons.refresh_rounded));
         await tester.pumpAndSettle();

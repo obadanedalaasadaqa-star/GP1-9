@@ -59,7 +59,7 @@ void main() {
   });
 
   test('offline: the saved receipts for the period are shown', () async {
-    await OfflineCache.saveReceipts([receipt('r1', nov3), receipt('r2', oct5)]);
+    await OfflineCache.saveReceipts([receipt('r1', nov3), receipt('r2', oct5)], generation: OfflineCache.generation);
     final res = await withHttp(noInternet,
         () => ApiClient.loadReceipts(from: novStart, to: decStart));
     expect(res.offline, isTrue);
@@ -75,7 +75,7 @@ void main() {
   });
 
   test('a real server error (401) is not hidden by the cache', () async {
-    await OfflineCache.saveReceipts([receipt('r1', nov3)]);
+    await OfflineCache.saveReceipts([receipt('r1', nov3)], generation: OfflineCache.generation);
     await expectLater(
       withHttp((_) async => http.Response(jsonEncode({'error': 'Invalid or expired token.'}), 401),
           () => ApiClient.loadReceipts()),
@@ -84,15 +84,15 @@ void main() {
   });
 
   test('a period fetch replaces the saved receipts in that period', () async {
-    await OfflineCache.saveReceipts([receipt('gone', nov3), receipt('r2', oct5)]);
-    await OfflineCache.saveReceipts([receipt('r1', nov3)], from: novStart, to: decStart);
+    await OfflineCache.saveReceipts([receipt('gone', nov3), receipt('r2', oct5)], generation: OfflineCache.generation);
+    await OfflineCache.saveReceipts([receipt('r1', nov3)], from: novStart, to: decStart, generation: OfflineCache.generation);
     final all = await OfflineCache.loadReceipts();
     expect(all!.map((r) => r.id), ['r1', 'r2']);
   });
 
   test('another account signing in wipes the saved receipts', () async {
     await OfflineCache.saveUser(user('u1'));
-    await OfflineCache.saveReceipts([receipt('r1', nov3)]);
+    await OfflineCache.saveReceipts([receipt('r1', nov3)], generation: OfflineCache.generation);
     await OfflineCache.saveUser(user('u2'));
     expect(await OfflineCache.loadReceipts(), isNull);
   });
@@ -125,7 +125,7 @@ void main() {
     final auth = await start((_) async => http.Response(jsonEncode(user('u1').toJson()), 200));
     expect(auth.offline, isFalse);
     expect((await OfflineCache.loadUser())!.id, 'u1');
-    await OfflineCache.saveReceipts([receipt('r1', nov3)]);
+    await OfflineCache.saveReceipts([receipt('r1', nov3)], generation: OfflineCache.generation);
     await auth.logout();
     expect(await OfflineCache.loadUser(), isNull);
     expect(await OfflineCache.loadReceipts(), isNull);

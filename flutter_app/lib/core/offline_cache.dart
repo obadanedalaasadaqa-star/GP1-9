@@ -22,6 +22,12 @@ class OfflineCache {
   static const _budgetsKey        = 'nexus_cache_budgets';
   static const _budgetsSavedAtKey = 'nexus_cache_budgets_saved_at';
 
+  // Goes up on every [clear] and owner change. A load captures it before its
+  // request and passes it to the save, so an answer that arrives after a
+  // logout (or after another account signed in) is never written.
+  static int _generation = 0;
+  static int get generation => _generation;
+
   // Everything that belongs to one account (all but the profile itself).
   static const _accountKeys = [
     _receiptsKey, _savedAtKey, _statsKey, _statsSavedAtKey,
@@ -30,12 +36,14 @@ class OfflineCache {
   ];
 
   // ── User ───────────────────────────────────────────────────────
-  /// Save the profile. A different account than the cached one wipes the
-  /// cached receipts, trends and AI insight/report first.
+  /// Save the profile. A different account than the cached one (or no cached
+  /// profile at all, so any account data left is an orphan) wipes the cached
+  /// receipts, trends, budgets and AI insight/report first.
   static Future<void> saveUser(User user) async {
     final prefs = await SharedPreferences.getInstance();
     final old = _decodeUser(prefs.getString(_userKey));
-    if (old != null && old.id != user.id) {
+    if (old == null || old.id != user.id) {
+      if (old != null) _generation++;
       for (final key in _accountKeys) {
         await prefs.remove(key);
       }
@@ -60,9 +68,13 @@ class OfflineCache {
   // ── Receipts ───────────────────────────────────────────────────
   /// Merge receipts fresh from the server. With a range, the server's answer
   /// is the full truth for [from, to), so cached ones in it are replaced.
+  ///
+  /// [generation]: [OfflineCache.generation] captured before the request.
+  /// Nothing is written when it changed since (logout or another account).
   static Future<void> saveReceipts(List<Receipt> fresh,
-      {DateTime? from, DateTime? to}) async {
+      {DateTime? from, DateTime? to, required int generation}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (generation != _generation) return;
     final byId = {for (final r in _decodeReceipts(prefs.getString(_receiptsKey)) ?? <Receipt>[]) r.id: r};
     if (from != null && to != null) {
       byId.removeWhere((_, r) => _inRange(r, from, to));
@@ -70,8 +82,13 @@ class OfflineCache {
     for (final r in fresh) {
       byId[r.id] = r;
     }
+    // Checked right before each write: clear() may run between two awaits. A
+    // savedAt written without its data is harmless (loaders need the data key,
+    // and the next clear or owner change removes it).
+    if (generation != _generation) return;
     await prefs.setString(
         _receiptsKey, jsonEncode(byId.values.map((r) => r.toJson()).toList()));
+    if (generation != _generation) return;
     await prefs.setString(_savedAtKey, DateTime.now().toUtc().toIso8601String());
   }
 
@@ -98,9 +115,11 @@ class OfflineCache {
   // ── Trends ─────────────────────────────────────────────────────
   /// One slot: the latest stats replace the older ones. Each period keeps
   /// its own from/to, so old stats are still labelled with the right months.
-  static Future<void> saveStats(SpendingStats stats) async {
+  static Future<void> saveStats(SpendingStats stats, {required int generation}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (generation != _generation) return; // see saveReceipts
     await prefs.setString(_statsKey, jsonEncode(stats.toJson()));
+    if (generation != _generation) return;
     await prefs.setString(_statsSavedAtKey, DateTime.now().toUtc().toIso8601String());
   }
 
@@ -125,9 +144,11 @@ class OfflineCache {
 
   // ── AI insight ─────────────────────────────────────────────────
   /// One slot: the latest insight (or "not enough data") replaces the older one.
-  static Future<void> saveInsight(Insight insight) async {
+  static Future<void> saveInsight(Insight insight, {required int generation}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (generation != _generation) return; // see saveReceipts
     await prefs.setString(_insightKey, jsonEncode(insight.toJson()));
+    if (generation != _generation) return;
     await prefs.setString(_insightSavedAtKey, DateTime.now().toUtc().toIso8601String());
   }
 
@@ -151,9 +172,11 @@ class OfflineCache {
 
   // ── AI report ──────────────────────────────────────────────────
   /// One slot: the last report loaded, with the request key it belongs to.
-  static Future<void> saveReport(String key, SpendingReport report) async {
+  static Future<void> saveReport(String key, SpendingReport report, {required int generation}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (generation != _generation) return; // see saveReceipts
     await prefs.setString(_reportKey, jsonEncode({'key': key, 'report': report.toJson()}));
+    if (generation != _generation) return;
     await prefs.setString(_reportSavedAtKey, DateTime.now().toUtc().toIso8601String());
   }
 
@@ -180,9 +203,11 @@ class OfflineCache {
   // ── Budgets ────────────────────────────────────────────────────
   /// One slot: the latest budget list. It keeps its month, so callers can
   /// tell a list from last month apart ([BudgetList.isMonthOf]).
-  static Future<void> saveBudgets(BudgetList list) async {
+  static Future<void> saveBudgets(BudgetList list, {required int generation}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (generation != _generation) return; // see saveReceipts
     await prefs.setString(_budgetsKey, jsonEncode(list.toJson()));
+    if (generation != _generation) return;
     await prefs.setString(_budgetsSavedAtKey, DateTime.now().toUtc().toIso8601String());
   }
 
@@ -205,6 +230,8 @@ class OfflineCache {
   }
 
   static Future<void> clear() async {
+    // First, so a save that is already past its own check stops at the next one.
+    _generation++;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_userKey);
     for (final key in _accountKeys) {

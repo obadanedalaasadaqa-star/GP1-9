@@ -172,7 +172,9 @@ void main() {
   });
 
   testWidgets('offline with a saved report for the same period: banner, email disabled', (tester) async {
-    await OfflineCache.saveReport('1m', SpendingReport.fromJson(reportJson()));
+    // Saved while this user was signed in (a cache without a profile is wiped).
+    await OfflineCache.saveUser(User.fromJson(userJson()));
+    await OfflineCache.saveReport('1m', SpendingReport.fromJson(reportJson()), generation: OfflineCache.generation);
     report = (_) async => throw const SocketException('down');
     await run(() => pumpView(tester));
     expect(find.textContaining('Showing report saved on this phone'), findsOneWidget);
@@ -183,7 +185,8 @@ void main() {
   });
 
   testWidgets('offline with nothing saved for this period: error and Try again', (tester) async {
-    await OfflineCache.saveReport('3m', SpendingReport.fromJson(reportJson()));
+    await OfflineCache.saveUser(User.fromJson(userJson()));
+    await OfflineCache.saveReport('3m', SpendingReport.fromJson(reportJson()), generation: OfflineCache.generation);
     report = (_) async => throw const SocketException('down');
     await run(() => pumpView(tester));
     expect(find.text("Couldn't load the report."), findsOneWidget);

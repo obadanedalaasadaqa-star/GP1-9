@@ -53,7 +53,7 @@ void main() {
       for (var i = 0; i < 20 && auth.loading; i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
-      auth.updateUser(User.fromJson(user));
+      await auth.completeLogin('t', User.fromJson(user));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
@@ -85,7 +85,7 @@ void main() {
       for (var i = 0; i < 20 && auth.loading; i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
-      auth.updateUser(User.fromJson(user));
+      await auth.completeLogin('t', User.fromJson(user));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => ThemeProvider()),

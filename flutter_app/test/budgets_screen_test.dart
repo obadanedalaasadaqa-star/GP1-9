@@ -184,7 +184,7 @@ void main() {
 
   testWidgets('offline: the saved list with the banner and its month, editing disabled', (tester) async {
     await OfflineCache.saveBudgets(BudgetList.fromJson(
-        budgetListJson(budgets: [budgetJson('Food', 50, 10)], label: 'October 2026')));
+        budgetListJson(budgets: [budgetJson('Food', 50, 10)], label: 'October 2026')), generation: OfflineCache.generation);
     handler = (_) async => throw const SocketException('Failed host lookup');
     await run(() async {
       await pumpScreen(tester);

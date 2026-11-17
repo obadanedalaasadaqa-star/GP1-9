@@ -78,7 +78,7 @@ void main() {
   });
 
   test('a timeout or an HTML 502 also falls back to the cache', () async {
-    await OfflineCache.saveStats(online);
+    await OfflineCache.saveStats(online, generation: OfflineCache.generation);
     final html = await withHttp(
         (_) async => http.Response('<html>Bad gateway</html>', 502),
         () => ApiClient.loadStats(bounds));
@@ -92,7 +92,7 @@ void main() {
   }, timeout: const Timeout(Duration(seconds: 30)));
 
   test('a JSON 400 / 401 is rethrown and the cache is not used', () async {
-    await OfflineCache.saveStats(online);
+    await OfflineCache.saveStats(online, generation: OfflineCache.generation);
     for (final code in [400, 401]) {
       await expectLater(
         withHttp((_) async => http.Response(jsonEncode({'error': 'Nope.'}), code),
@@ -113,14 +113,14 @@ void main() {
 
   test('another account signing in and clear() remove the saved stats', () async {
     await OfflineCache.saveUser(user('u1'));
-    await OfflineCache.saveStats(online);
+    await OfflineCache.saveStats(online, generation: OfflineCache.generation);
     await OfflineCache.saveUser(user('u1')); // same account keeps them
     expect(await OfflineCache.loadStats(), isNotNull);
     await OfflineCache.saveUser(user('u2'));
     expect(await OfflineCache.loadStats(), isNull);
     expect(await OfflineCache.statsSavedAt(), isNull);
 
-    await OfflineCache.saveStats(online);
+    await OfflineCache.saveStats(online, generation: OfflineCache.generation);
     await OfflineCache.clear();
     expect(await OfflineCache.loadStats(), isNull);
   });

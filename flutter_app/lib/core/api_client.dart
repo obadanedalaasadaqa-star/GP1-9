@@ -346,9 +346,10 @@ class ApiClient {
   /// saved list when the server can't be reached. A real answer from our
   /// server (401, 400, ...) is still thrown, never hidden by the cache.
   static Future<BudgetsResult> loadBudgets() async {
+    final gen = OfflineCache.generation;
     try {
       final list = await getBudgets();
-      await _saveBudgetsQuietly(list);
+      await _saveBudgetsQuietly(list, generation: gen);
       return (list: list, offline: false, savedAt: null);
     } on ApiException catch (e) {
       if (e.fromServer) rethrow;
@@ -364,9 +365,10 @@ class ApiClient {
     return (list: cached, offline: true, savedAt: await OfflineCache.budgetsSavedAt());
   }
 
-  static Future<void> _saveBudgetsQuietly(BudgetList list) async {
+  // [generation]: captured before the request (see OfflineCache.generation).
+  static Future<void> _saveBudgetsQuietly(BudgetList list, {required int generation}) async {
     try {
-      await OfflineCache.saveBudgets(list);
+      await OfflineCache.saveBudgets(list, generation: generation);
     } catch (_) {
       // Saving is best effort: the fresh list is still shown.
     }
@@ -374,6 +376,7 @@ class ApiClient {
 
   /// Create or change the budget of [category]. Returns the fresh list.
   static Future<BudgetList> saveBudget(String category, double limit) async {
+    final gen = OfflineCache.generation;
     final res = await http
         .put(
           Uri.parse('${AppConfig.baseUrl}/budgets'),
@@ -385,12 +388,13 @@ class ApiClient {
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     final list = BudgetList.fromJson(_parse(res));
-    await _saveBudgetsQuietly(list);
+    await _saveBudgetsQuietly(list, generation: gen);
     return list;
   }
 
   /// Remove the budget of [category]. Returns the fresh list.
   static Future<BudgetList> deleteBudget(String category) async {
+    final gen = OfflineCache.generation;
     final uri = Uri.parse('${AppConfig.baseUrl}/budgets/${Uri.encodeComponent(category)}').replace(
       queryParameters: {'tzOffsetMinutes': '$tzOffsetMinutes'},
     );
@@ -401,7 +405,7 @@ class ApiClient {
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
     final list = BudgetList.fromJson(_parse(res));
-    await _saveBudgetsQuietly(list);
+    await _saveBudgetsQuietly(list, generation: gen);
     return list;
   }
 
@@ -434,10 +438,11 @@ class ApiClient {
   /// the saved copies when the server can't be reached. A real answer from
   /// our server (401, 400, ...) is still thrown, never hidden by the cache.
   static Future<ReceiptsResult> loadReceipts({DateTime? from, DateTime? to}) async {
+    final gen = OfflineCache.generation; // before the request: see OfflineCache.generation
     try {
       final receipts = await getReceipts(from: from, to: to);
       try {
-        await OfflineCache.saveReceipts(receipts, from: from, to: to);
+        await OfflineCache.saveReceipts(receipts, from: from, to: to, generation: gen);
       } catch (_) {
         // Saving is best effort: the fresh list is still shown.
       }
@@ -482,10 +487,11 @@ class ApiClient {
   /// saved stats when the server can't be reached. A real answer from our
   /// server (401, 400, ...) is still thrown, never hidden by the cache.
   static Future<StatsResult> loadStats(List<DateTime> bounds) async {
+    final gen = OfflineCache.generation;
     try {
       final stats = await getStats(bounds);
       try {
-        await OfflineCache.saveStats(stats);
+        await OfflineCache.saveStats(stats, generation: gen);
       } catch (_) {
         // Saving is best effort: the fresh stats are still shown.
       }
@@ -526,10 +532,11 @@ class ApiClient {
   /// ([stale]). A JSON answer from our server (401, 502, ...) is still thrown.
   static Future<InsightResult> loadInsight(List<DateTime> bounds,
       {Duration timeout = _kInsightTimeout}) async {
+    final gen = OfflineCache.generation;
     try {
       final insight = await getInsight(bounds, timeout: timeout);
       try {
-        await OfflineCache.saveInsight(insight);
+        await OfflineCache.saveInsight(insight, generation: gen);
       } catch (_) {
         // Saving is best effort.
       }
@@ -602,10 +609,11 @@ class ApiClient {
   /// back to the saved report only when it is for the same period.
   static Future<ReportResult> loadReport(ReportRequest r,
       {Duration timeout = _kReportTimeout}) async {
+    final gen = OfflineCache.generation;
     try {
       final report = await getReport(r, timeout: timeout);
       try {
-        await OfflineCache.saveReport(r.cacheKey, report);
+        await OfflineCache.saveReport(r.cacheKey, report, generation: gen);
       } catch (_) {
         // Saving is best effort.
       }

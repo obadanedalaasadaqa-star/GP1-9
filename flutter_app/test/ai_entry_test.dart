@@ -151,7 +151,9 @@ void main() {
   });
 
   testWidgets('Home pull-to-refresh reloads the teaser: offline line gone, exactly 1 insight call', (tester) async {
-    await OfflineCache.saveInsight(Insight.fromJson({'status': 'ready', 'summary': 'Saved.', 'tip': 'T.'}));
+    // Saved while this user was signed in (a cache without a profile is wiped).
+    await OfflineCache.saveUser(User.fromJson(userJson));
+    await OfflineCache.saveInsight(Insight.fromJson({'status': 'ready', 'summary': 'Saved.', 'tip': 'T.'}), generation: OfflineCache.generation);
     insightOnline = false;
     await run(() async {
       await pumpScreen(tester, const DashboardScreen());

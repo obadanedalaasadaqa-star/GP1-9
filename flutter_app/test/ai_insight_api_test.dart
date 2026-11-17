@@ -122,7 +122,7 @@ void main() {
 
   group('cache keys', () {
     Future<void> saveAll() async {
-      await OfflineCache.saveInsight(Insight.fromJson(readyJson));
+      await OfflineCache.saveInsight(Insight.fromJson(readyJson), generation: OfflineCache.generation);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('nexus_cache_report', '{"key":"1m","report":{}}');
       await prefs.setString('nexus_cache_report_saved_at', DateTime.now().toIso8601String());

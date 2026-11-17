@@ -10,6 +10,7 @@ import 'package:nexus_app/core/auth_provider.dart';
 import 'package:nexus_app/core/budget_models.dart';
 import 'package:nexus_app/core/offline_cache.dart';
 import 'package:nexus_app/core/theme_provider.dart';
+import 'package:nexus_app/core/user_model.dart';
 import 'package:nexus_app/widgets/budgets_alerts_card.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,8 +62,10 @@ void main() {
   }
 
   testWidgets('switches show the user values; the budget count comes from the saved list', (tester) async {
+    // Saved while this user was signed in (a cache without a profile is wiped).
+    await OfflineCache.saveUser(User.fromJson(userJson()));
     await OfflineCache.saveBudgets(BudgetList.fromJson(
-        budgetListJson(budgets: [budgetJson('Food', 50, 1), budgetJson('Pharmacy', 9, 1)])));
+        budgetListJson(budgets: [budgetJson('Food', 50, 1), budgetJson('Pharmacy', 9, 1)])), generation: OfflineCache.generation);
     await pumpCard(tester);
     expect(find.text('BUDGETS & ALERTS'), findsOneWidget);
     expect(find.text('Monthly budgets'), findsOneWidget);
