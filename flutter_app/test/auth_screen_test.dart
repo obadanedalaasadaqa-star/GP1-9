@@ -182,5 +182,51 @@ void main() {
       await openRegister(tester);
       expect(find.text('Invalid email or password.'), findsNothing);
     });
+
+    // Older accounts may have an address the strict check rejects; sign-in
+    // must still accept it. New addresses (register) must be valid.
+    testWidgets('sign-in with a@b: no email error, the form is sent', (tester) async {
+      await pumpAuth(tester);
+      handler = (_) async => http.Response(jsonEncode({'token': 'jwt', 'user': userJson(email: 'a@b')}), 200);
+      await run(() async {
+        await tester.enterText(field('you@example.com'), 'a@b');
+        await tester.enterText(field('••••••••'), 'Nexus@2026');
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Sign In'));
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('Enter a valid email'), findsNothing);
+      expect(requests.map((r) => r.url.path), contains(endsWith('/auth/login')));
+      expect(find.text('SHELL'), findsOneWidget);
+    });
+
+    testWidgets('register with a@b: "Enter a valid email", nothing is sent', (tester) async {
+      await pumpAuth(tester);
+      await openRegister(tester);
+      await run(() async {
+        await tester.enterText(field('First'), 'Sara');
+        await tester.enterText(field('Last'), 'Ali');
+        await tester.enterText(field('you@example.com'), 'a@b');
+        await tester.enterText(field('••••••••'), 'Nexus@2026');
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Create Account'));
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('Enter a valid email'), findsOneWidget);
+      expect(requests, isEmpty);
+    });
+
+    testWidgets('register with a 51-character first name: the length error, nothing is sent', (tester) async {
+      await pumpAuth(tester);
+      await openRegister(tester);
+      await run(() async {
+        await tester.enterText(field('First'), 'S' * 51);
+        await tester.enterText(field('Last'), 'Ali');
+        await tester.enterText(field('you@example.com'), 'sara@nexus.test');
+        await tester.enterText(field('••••••••'), 'Nexus@2026');
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Create Account'));
+        await tester.pumpAndSettle();
+      });
+      expect(find.text('First name: at most 50 characters'), findsOneWidget);
+      expect(requests, isEmpty);
+    });
   });
 }

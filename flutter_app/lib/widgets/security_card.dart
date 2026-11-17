@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/realtime_service.dart';
 import '../core/theme_provider.dart';
 import '../core/user_model.dart';
 import '../screens/verify_email_screen.dart';
@@ -25,9 +26,13 @@ class _SecurityCardState extends State<SecurityCard> {
   Future<void> _turnOn() async {
     final auth = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    // Turning it on ends every other session and sends this device a new
+    // token; the live connection reconnects with it.
+    final realtime = context.read<RealtimeService?>();
     setState(() => _pending = true);
     try {
-      auth.updateUser(await ApiClient.setLoginTwoFactor(true));
+      Future<User> turnOn() => ApiClient.setLoginTwoFactor(true);
+      auth.updateUser(await (realtime == null ? turnOn() : realtime.whileTokenChanges(turnOn)));
       messenger.showSnackBar(const SnackBar(
         content: Text("Two-step sign-in is on. Next time you log in, we'll email you a code.")));
     } catch (e) {

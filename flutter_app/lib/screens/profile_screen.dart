@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/realtime_service.dart';
 import '../core/theme_provider.dart';
+import '../core/user_model.dart';
 import '../core/validators.dart';
 import '../widgets/budgets_alerts_card.dart';
 import '../widgets/password_meter.dart';
@@ -63,24 +65,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _changePassword() async {
     if (!(_pwFormKey.currentState?.validate() ?? false)) return;
+    // The server ends every other session and sends this device a new token;
+    // the live connection reconnects with it (no "session expired").
+    final realtime = context.read<RealtimeService?>();
     setState(() { _pwLoading = true; _pwStatus = null; });
     try {
-      await ApiClient.changePassword(
+      Future<void> change() => ApiClient.changePassword(
         currentPassword: _currentPwCtrl.text,
         newPassword: _newPwCtrl.text);
+      await (realtime == null ? change() : realtime.whileTokenChanges(change));
+      if (!mounted) return;
       _currentPwCtrl.clear();
       _newPwCtrl.clear();
       _confirmPwCtrl.clear();
       setState(() { _pwStatus = 'success'; _pwMsg = 'Password updated.'; });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _pwStatus = 'error'; _pwMsg = e.toString(); });
     } finally {
       if (mounted) setState(() => _pwLoading = false);
     }
   }
 
+  // Compared like the server: case and surrounding spaces are not a change.
   bool get _emailChanged =>
-      _emailCtrl.text.trim() != context.read<AuthProvider>().user?.email;
+      _emailCtrl.text.trim().toLowerCase() !=
+      context.read<AuthProvider>().user?.email.trim().toLowerCase();
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -89,17 +99,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final first = _firstNameCtrl.text.trim();
     final last  = _lastNameCtrl.text.trim();
     final email = _emailCtrl.text.trim();
-    if (first == user?.firstName && last == user?.lastName && !_emailChanged) {
+    final emailChanged = _emailChanged;
+    if (first == user?.firstName && last == user?.lastName && !emailChanged) {
       return;
     }
 
+    // An email change ends every other session and sends a new token.
+    final realtime = emailChanged ? context.read<RealtimeService?>() : null;
     setState(() { _loading = true; _status = null; });
     try {
-      final updated = await ApiClient.updateProfile(
+      Future<User> update() => ApiClient.updateProfile(
         firstName: first, lastName: last,
         email: email,
-        currentPassword: _emailChanged ? _passwordCtrl.text : null);
-      final emailChanged = _emailChanged;
+        currentPassword: emailChanged ? _passwordCtrl.text : null);
+      final updated = await (realtime == null ? update() : realtime.whileTokenChanges(update));
       // An email change turns two-step sign-in off on the server.
       final lostTwoFactor = (user?.loginTwoFactor ?? false) && !updated.loginTwoFactor;
       auth.updateUser(updated);
@@ -118,6 +131,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() { _status = 'error'; _msg = e.toString(); });
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // Ends every session on the server, this one too, then logs out here. The
+  // live connection is stopped first, so the server dropping it can't show
+  // "session expired". No context is used after the first await.
+  Future<void> _logoutAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out of all devices?'),
+        content: const Text('Sign out on every device, including this one?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel')),
+          TextButton(
+            key: const ValueKey('logout-all-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out', style: TextStyle(color: AppColors.alert))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final auth = context.read<AuthProvider>();
+    final realtime = context.read<RealtimeService?>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    realtime?.stop();
+    try {
+      await ApiClient.logoutAll();
+      await auth.logout();
+    } on ApiException catch (e) {
+      // 401: the session is already gone (e.g. the answer was lost after the
+      // server ended it), so just log out here.
+      if (e.statusCode == 401) {
+        await auth.logout();
+        return;
+      }
+      _logoutAllFailed(realtime, messenger, e.toString());
+    } catch (e) {
+      _logoutAllFailed(realtime, messenger, e.toString());
+    }
+  }
+
+  // Still signed in: reconnect (syncing what was pushed meanwhile) and say why.
+  void _logoutAllFailed(RealtimeService? realtime, ScaffoldMessengerState messenger, String error) {
+    if (realtime != null) {
+      realtime.syncOnFirstConnect = true;
+      realtime.start();
+    }
+    if (mounted) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't sign out of all devices. $error")));
     }
   }
 
@@ -279,8 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _input(_firstNameCtrl, 'First',
                                   isDark: isDark, border: border,
                                   textPrimary: textPrimary, textMuted: textMuted,
-                                  validator: (v) => (v?.trim().isEmpty ?? true)
-                                      ? 'Required' : null),
+                                  validator: (v) => validateName(v, 'First name')),
                               ],
                             )),
                             const SizedBox(width: 12),
@@ -291,8 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _input(_lastNameCtrl, 'Last',
                                   isDark: isDark, border: border,
                                   textPrimary: textPrimary, textMuted: textMuted,
-                                  validator: (v) => (v?.trim().isEmpty ?? true)
-                                      ? 'Required' : null),
+                                  validator: (v) => validateName(v, 'Last name')),
                               ],
                             )),
                           ],
@@ -303,9 +367,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           keyboard: TextInputType.emailAddress,
                           isDark: isDark, border: border,
                           textPrimary: textPrimary, textMuted: textMuted,
+                          // The strict check only for a new address, so an older
+                          // account's stored email never blocks a name edit.
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return 'Email is required';
-                            if (!v.contains('@')) return 'Enter a valid email';
+                            if (_emailChanged) return validateEmail(v);
                             return null;
                           }),
                         if (_emailChanged) ...[
@@ -419,6 +485,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Text('Sign Out',
                     style: GoogleFonts.spaceGrotesk(
                       fontWeight: FontWeight.w700, fontSize: 14)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Center(
+                child: TextButton(
+                  key: const ValueKey('logout-all'),
+                  onPressed: _logoutAll,
+                  child: Text('Sign out of all devices',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13, fontWeight: FontWeight.w600,
+                      color: AppColors.alert)),
                 ),
               ),
             ],

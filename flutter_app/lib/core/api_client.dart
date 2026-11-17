@@ -77,6 +77,21 @@ class ApiClient {
     await prefs.remove(_tokenKey);
   }
 
+  /// A password change, an email change or turning two-step sign-in on ends
+  /// every older session on the server, and the answer carries this device's
+  /// new token. Saved before the caller gets the result, but only if the
+  /// saved token is still [before] (the one the request was sent with): a
+  /// logout or another sign-in while the request was in flight wins, so a
+  /// late answer can't sign the old account back in.
+  static Future<Map<String, dynamic>> _keepNewToken(
+      Map<String, dynamic> data, String? before) async {
+    final token = data['token'];
+    if (token is String && token.isNotEmpty && await getToken() == before) {
+      await saveToken(token);
+    }
+    return data;
+  }
+
   // ── HTTP helpers ───────────────────────────────────────────────
   static Future<Map<String, String>> _headers({bool auth = false}) async {
     final h = {'Content-Type': 'application/json'};
@@ -221,6 +236,7 @@ class ApiClient {
     String? email,
     String? currentPassword,
   }) async {
+    final before = await getToken();
     final res = await http
         .patch(
           Uri.parse('${AppConfig.baseUrl}/user/me'),
@@ -237,7 +253,7 @@ class ApiClient {
           _kTimeout,
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
-    return User.fromJson(_parse(res));
+    return User.fromJson(await _keepNewToken(_parse(res), before));
   }
 
   /// Ask the backend to email a new verification code.
@@ -273,6 +289,7 @@ class ApiClient {
     required String currentPassword,
     required String newPassword,
   }) async {
+    final before = await getToken();
     final res = await http
         .patch(
           Uri.parse('${AppConfig.baseUrl}/user/password'),
@@ -286,12 +303,13 @@ class ApiClient {
           _kTimeout,
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
-    _parse(res);
+    await _keepNewToken(_parse(res), before);
   }
 
   /// Turn two-step sign-in on (needs a verified email) or off (needs
   /// [currentPassword]).
   static Future<User> setLoginTwoFactor(bool on, {String? currentPassword}) async {
+    final before = await getToken();
     final res = await http
         .patch(
           Uri.parse('${AppConfig.baseUrl}/user/security'),
@@ -305,7 +323,22 @@ class ApiClient {
           _kTimeout,
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
-    return User.fromJson(_parse(res));
+    return User.fromJson(await _keepNewToken(_parse(res), before));
+  }
+
+  /// Sign out on every device, this one included (the server ends every
+  /// session). The caller then logs out locally.
+  static Future<void> logoutAll() async {
+    final res = await http
+        .post(
+          Uri.parse('${AppConfig.baseUrl}/user/logout-all'),
+          headers: await _headers(auth: true),
+        )
+        .timeout(
+          _kTimeout,
+          onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+        );
+    _parse(res);
   }
 
   /// Email settings. Always sends the phone's time zone too.

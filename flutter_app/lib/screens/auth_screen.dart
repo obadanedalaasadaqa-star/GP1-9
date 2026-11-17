@@ -179,8 +179,7 @@ class _AuthScreenState extends State<AuthScreen>
                                           _field(_firstName, 'First',
                                             isDark: isDark, border: border,
                                             textPrimary: textPrimary, textMuted: textMuted,
-                                            validator: (v) => (v?.trim().isEmpty ?? true)
-                                                ? 'Required' : null),
+                                            validator: (v) => validateName(v, 'First name')),
                                         ],
                                       )),
                                       const SizedBox(width: 12),
@@ -191,8 +190,7 @@ class _AuthScreenState extends State<AuthScreen>
                                           _field(_lastName, 'Last',
                                             isDark: isDark, border: border,
                                             textPrimary: textPrimary, textMuted: textMuted,
-                                            validator: (v) => (v?.trim().isEmpty ?? true)
-                                                ? 'Required' : null),
+                                            validator: (v) => validateName(v, 'Last name')),
                                         ],
                                       )),
                                     ],
@@ -204,7 +202,9 @@ class _AuthScreenState extends State<AuthScreen>
                                   keyboard: TextInputType.emailAddress,
                                   isDark: isDark, border: border,
                                   textPrimary: textPrimary, textMuted: textMuted,
+                                  // Sign-in accepts older addresses; new ones must be valid
                                   validator: (v) {
+                                    if (_isRegister) return validateEmail(v);
                                     if (v == null || v.isEmpty) return 'Email is required';
                                     if (!v.contains('@')) return 'Enter a valid email';
                                     return null;

@@ -33,3 +33,30 @@ String? validateNewPassword(String? v) {
   if (v == null || v.isEmpty) return 'Password is required';
   return isValidPassword(v) ? null : 'Password does not meet all the requirements';
 }
+
+// ── Email and names ──────────────────────────────────────────────────────────
+// Mirror backend/src/lib/email.js and names.js.
+
+final emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+const maxEmailLength = 254;
+const maxNameLength = 50;
+
+/// Form validator for a new email (register, or a changed email on Profile).
+/// Sign-in keeps the looser check, so older accounts can always log in.
+String? validateEmail(String? v) {
+  final email = v?.trim() ?? '';
+  if (email.isEmpty) return 'Email is required';
+  if (email.length > maxEmailLength || !emailRegExp.hasMatch(email)) {
+    return 'Enter a valid email';
+  }
+  return null;
+}
+
+/// Form validator for a first or last name: required, at most 50 characters
+/// (counted like the server, in code points).
+String? validateName(String? v, String label) {
+  final name = v?.trim() ?? '';
+  if (name.isEmpty) return 'Required';
+  if (name.runes.length > maxNameLength) return '$label: at most $maxNameLength characters';
+  return null;
+}

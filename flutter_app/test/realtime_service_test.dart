@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:nexus_app/core/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexus_app/core/budget_models.dart';
 import 'package:nexus_app/core/realtime_service.dart';
@@ -356,5 +357,95 @@ void main() {
     s.fire('disconnect', 'io server disconnect');
     s.fire('connect');
     expect(s.connectCalls, 1);
+  });
+
+  // Audit L2: the server drops the old session's sockets after a password,
+  // email or 2FA change. That must not log out the device that made it.
+  group('whileTokenChanges', () {
+    test('closes the socket first, ignores the old one, then reconnects with the new token and syncs', () async {
+      await service.start();
+      final old = socket();
+      old.fire('connect');
+      var unauthorized = 0;
+      var syncs = 0;
+      service.unauthorized.listen((_) => unauthorized++);
+      service.syncs.listen((_) => syncs++);
+
+      await service.whileTokenChanges(() async {
+        expect(old.disposed, isTrue); // closed before the action runs
+        // The server drops the old session meanwhile.
+        old.fire('disconnect', 'io server disconnect');
+        old.fire('connect_error', {'message': 'unauthorized'});
+        await ApiClient.saveToken('new-token');
+      });
+      await flush();
+      expect(old.connectCalls, 1); // no retry with the old token
+      expect(unauthorized, 0);
+      expect(sockets, hasLength(2));
+      expect(sockets.last.token, 'new-token');
+      sockets.last.fire('connect');
+      await flush();
+      expect(syncs, 1); // first connect syncs: nothing pushed in the gap is lost
+    });
+
+    test('an action that throws still reconnects, with the old token', () async {
+      await service.start();
+      await expectLater(
+          service.whileTokenChanges<void>(() async => throw Exception('wrong password')),
+          throwsException);
+      await flush();
+      expect(sockets, hasLength(2));
+      expect(sockets.last.token, 'test-token');
+    });
+
+    test('returns the action result', () async {
+      await service.start();
+      expect(await service.whileTokenChanges(() async => 42), 42);
+    });
+  });
+
+  group('stop()', () {
+    test('events of the old socket emit nothing', () async {
+      await service.start();
+      final old = socket();
+      old.fire('connect');
+      var unauthorized = 0;
+      service.unauthorized.listen((_) => unauthorized++);
+      service.stop();
+      expect(old.disposed, isTrue);
+      expect(service.connected, isFalse);
+      old.fire('disconnect', 'io server disconnect');
+      old.fire('connect_error', {'message': 'unauthorized'});
+      old.fire('receipt:new', _receiptPayload);
+      await flush();
+      expect(unauthorized, 0);
+      expect(old.connectCalls, 1);
+      expect(service.refreshTick.value, 0);
+    });
+
+    test('a resume while stopped syncs nothing and creates no socket; after start() it works again', () async {
+      await service.start();
+      var syncs = 0;
+      service.syncs.listen((_) => syncs++);
+      service.stop();
+      service.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 80)); // past the fallback
+      expect(syncs, 0);
+      expect(sockets, hasLength(1));
+
+      await service.start();
+      expect(sockets, hasLength(2));
+      sockets.last.fire('connect');
+      service.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await flush();
+      expect(syncs, 1);
+    });
+
+    test('a start() still waiting for the token is cancelled by stop()', () async {
+      final pending = service.start();
+      service.stop();
+      await pending;
+      expect(sockets, isEmpty);
+    });
   });
 }

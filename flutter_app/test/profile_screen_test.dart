@@ -25,12 +25,12 @@ void main() {
       http.runWithClient(body, () => MockClient((req) => handler(req)));
 
   /// ProfileScreen behind a stand-in auth gate ("LOGGED OUT" after Sign Out).
-  Future<void> pumpProfile(WidgetTester tester, {bool verified = true}) async {
+  Future<void> pumpProfile(WidgetTester tester, {bool verified = true, String email = 'a@nexus.test'}) async {
     tester.view.physicalSize = const Size(800, 1600); // wide: the test font is wider than DM Sans
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     handler = (req) async => req.url.path.endsWith('/user/me')
-        ? http.Response(jsonEncode(userJson(verified: verified)), 200)
+        ? http.Response(jsonEncode(userJson(verified: verified, email: email)), 200)
         : http.Response(jsonEncode({'message': 'ok'}), 200);
     await run(() async {
       await tester.pumpWidget(MultiProvider(
@@ -86,5 +86,71 @@ void main() {
     await tapVisible(tester, find.text('Sign Out'));
     expect(find.text('LOGGED OUT'), findsOneWidget);
     expect(await ApiClient.getToken(), isNull);
+  });
+
+  testWidgets('Sign out of all devices: confirm, POST /user/logout-all, logged out (no live connection)',
+      (tester) async {
+    await pumpProfile(tester);
+    final paths = <String>[];
+    handler = (req) async {
+      paths.add('${req.method} ${req.url.path}');
+      return http.Response(jsonEncode({'message': 'Signed out on all devices.'}), 200);
+    };
+    await tapVisible(tester, find.byKey(const ValueKey('logout-all')));
+    expect(find.text('Sign out on every device, including this one?'), findsOneWidget);
+    await run(() async {
+      await tester.tap(find.byKey(const ValueKey('logout-all-confirm')));
+      await tester.pumpAndSettle();
+    });
+    expect(paths, [endsWith('/user/logout-all')]);
+    expect(paths.single, startsWith('POST'));
+    expect(find.text('LOGGED OUT'), findsOneWidget);
+    expect(await ApiClient.getToken(), isNull);
+  });
+
+  testWidgets('an older stored email (a@b) does not block a name edit', (tester) async {
+    await pumpProfile(tester, email: 'a@b');
+    final sent = <http.Request>[];
+    handler = (req) async {
+      sent.add(req);
+      return http.Response(jsonEncode({...userJson(email: 'a@b'), 'firstName': 'Sami', 'name': 'Sami Ali'}), 200);
+    };
+    await run(() async {
+      await tester.enterText(find.byType(TextFormField).first, 'Sami');
+      await tester.pump();
+    });
+    expect(find.text('Required to change your email'), findsNothing); // not an email change
+    await tapVisible(tester, find.text('Save Changes'));
+    expect(find.text('Enter a valid email'), findsNothing);
+    expect(sent, hasLength(1));
+    expect(sent.single.method, 'PATCH');
+    expect(sent.single.url.path, endsWith('/user/me'));
+    expect(jsonDecode(sent.single.body), {'firstName': 'Sami', 'lastName': 'Ali', 'email': 'a@b'});
+  });
+
+  testWidgets('the same email in another case is not a change (no password field)', (tester) async {
+    await pumpProfile(tester);
+    await run(() async {
+      await tester.enterText(find.widgetWithText(TextFormField, 'a@nexus.test'), ' A@Nexus.Test ');
+      await tester.pump();
+    });
+    expect(find.text('Required to change your email'), findsNothing);
+  });
+
+  testWidgets('a changed email must be valid', (tester) async {
+    await pumpProfile(tester);
+    var sent = 0;
+    handler = (_) async {
+      sent++;
+      return http.Response('{}', 200);
+    };
+    await run(() async {
+      await tester.enterText(find.widgetWithText(TextFormField, 'a@nexus.test'), 'new@b');
+      await tester.pump();
+    });
+    expect(find.text('Required to change your email'), findsOneWidget);
+    await tapVisible(tester, find.text('Save Changes'));
+    expect(find.text('Enter a valid email'), findsOneWidget);
+    expect(sent, 0);
   });
 }

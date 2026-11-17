@@ -73,6 +73,8 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
   // Resume started a reconnect: its connect does the sync (only one sync).
   bool _syncOnConnect = false;
   Timer? _resumeFallback;
+  // stop() was called: no socket and no resume sync until start().
+  bool _stopped = false;
 
   Stream<ReceiptEvent> get receipts => _receipts.stream;
   Stream<BudgetAlert> get budgetAlerts => _budgetAlerts.stream;
@@ -105,8 +107,9 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Connect with the saved token. Does nothing if there is no token.
   Future<void> start() async {
+    _stopped = false;
     final token = await ApiClient.getToken();
-    if (_disposed || token == null) return;
+    if (_disposed || _stopped || token == null) return;
 
     _socket?.dispose();
     _hadConnected = false;
@@ -122,6 +125,35 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
     socket.on('receipt:new', (data) => _onReceipt(socket, data));
     socket.on('budget:alert', (data) => _onBudgetAlert(socket, data));
     socket.connect();
+  }
+
+  /// Closes the live connection and keeps it closed (no reconnect, no resume
+  /// sync) until start() is called again. Used before "sign out everywhere".
+  void stop() {
+    _stopped = true;
+    _cancelResumeSync();
+    final socket = _socket;
+    // With no current socket, _isLive drops every later event of the old one
+    // (the server's disconnect, a retry, an "unauthorized" refusal).
+    _socket = null;
+    socket?.dispose();
+    if (!_disposed) notifyListeners();
+  }
+
+  /// Runs [action] with the live socket closed, then reconnects with the
+  /// token saved now (a password/email/2FA change gives a new one).
+  /// Without this, the server's disconnect of the old session would reach this
+  /// socket, its retry with the old token would be refused, and the shell
+  /// would log out the user who just made the change.
+  Future<T> whileTokenChanges<T>(Future<T> Function() action) async {
+    stop();
+    try {
+      return await action();
+    } finally {
+      // The first connect syncs, so nothing pushed during the gap is lost.
+      syncOnFirstConnect = true;
+      unawaited(start());
+    }
   }
 
   // Events from an old (replaced or disposed) socket are ignored.
@@ -195,7 +227,8 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_disposed || state != AppLifecycleState.resumed) return;
+    // Stopped: a sync now could hit a revoked session and log out by mistake.
+    if (_disposed || _stopped || state != AppLifecycleState.resumed) return;
     // The user was away: reload, even before the first connect. If the socket
     // has to reconnect, its connect does the sync (so it runs once, not twice);
     // if the reconnect is slow or blocked, sync over HTTP after a short wait.
