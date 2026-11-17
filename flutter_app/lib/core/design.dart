@@ -327,7 +327,19 @@ class _PressableState extends State<Pressable> {
   }
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    // Reduce Motion: no sink or shrink, the tap still works.
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: widget.child,
+      );
+    }
+    return _animated();
+  }
+
+  Widget _animated() => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         onTapDown: (_) => _set(true),

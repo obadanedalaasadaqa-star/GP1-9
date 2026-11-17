@@ -13,6 +13,7 @@ import '../core/realtime_service.dart';
 import '../core/stats_model.dart';
 import '../core/trends.dart';
 import '../widgets/budget_bar.dart';
+import '../widgets/charts/chart_anim.dart';
 import '../widgets/offline_banner.dart';
 import 'ai_screen.dart';
 import 'budgets_screen.dart';
@@ -681,13 +682,11 @@ class _MonthChart extends StatelessWidget {
                             color: i == periods.length - 1
                                 ? AppColors.lime : Colors.white)),
                         const SizedBox(height: 6),
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: maxAmt == 0
-                              ? 0 : periods[i].total / maxAmt),
-                          duration: Duration(milliseconds: 500 + i * 70),
-                          curve: Curves.easeOutCubic,
-                          builder: (context, f, _) => Container(
-                            height: chartHeight * f,
+                        ChartGrow(
+                          dataKey: '${periods[i].from}:${periods[i].total}',
+                          builder: (context, t) => Container(
+                            height: maxAmt == 0
+                                ? 0 : chartHeight * t * periods[i].total / maxAmt,
                             decoration: BoxDecoration(
                               color: i == periods.length - 1
                                   ? AppColors.lime : AppColors.lavender,

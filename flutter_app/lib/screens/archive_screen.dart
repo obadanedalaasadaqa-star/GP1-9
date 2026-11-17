@@ -9,6 +9,7 @@ import '../core/money.dart';
 import '../core/period.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
+import '../widgets/charts/chart_anim.dart';
 import '../widgets/offline_banner.dart';
 import 'receipt_detail_screen.dart';
 
@@ -495,11 +496,10 @@ class _StackedBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final nx = Nx.of(context);
     final entries = totals.entries.where((e) => e.value > 0).toList();
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 700),
-      curve: Curves.easeOutCubic,
-      builder: (context, t, _) => Container(
+    // ChartGrow: grows once per data set, at once with Reduce Motion on.
+    return ChartGrow(
+      dataKey: Object.hashAll(entries.map((e) => '${e.key}:${e.value}')),
+      builder: (context, t) => Container(
         height: 30,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(15),
