@@ -77,7 +77,7 @@ class ChatChartView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(c.title,
-            style: GoogleFonts.dmSans(fontSize: 11.5, fontWeight: FontWeight.w600, color: textMuted)),
+            style: GoogleFonts.instrumentSans(fontSize: 11.5, fontWeight: FontWeight.w600, color: textMuted)),
           const SizedBox(height: 8),
           body,
         ],

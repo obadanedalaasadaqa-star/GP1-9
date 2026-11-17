@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
-import '../core/theme_provider.dart';
+import '../core/design.dart';
 import '../core/validators.dart';
 import '../widgets/password_meter.dart';
 import 'verify_email_screen.dart';
@@ -76,237 +76,285 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.watch<ThemeProvider>().isDark;
-    final bg      = isDark ? AppColors.bg      : AppColors.bgLight;
-    final surface = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border  = isDark ? AppColors.border  : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
-    final textDim     = isDark ? AppColors.textDim     : AppColors.textDimLight;
+    final nx = Nx.of(context);
+    final isDark = nx.dark;
+    final border = nx.line;
+    final textPrimary = nx.text;
+    final textMuted = nx.muted;
+    final hero = isDark ? AppColors.ink : AppColors.cobalt;
+    final sheet = isDark ? AppColors.surface : AppColors.paper;
 
-    return Scaffold(
-      backgroundColor: bg,
-      body: Container(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+      backgroundColor: sheet,
+      body: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(-0.5, -0.9),
-            radius: 1.1,
-            colors: [
-              AppColors.gold.withValues(alpha: isDark ? 0.06 : 0.04),
-              bg,
-            ],
+          gradient: LinearGradient(
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            colors: [hero, hero, sheet, sheet],
+            stops: const [0, 0.4, 0.4, 1],
           ),
         ),
-        child: SafeArea(
+        child: SingleChildScrollView(
           child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 32),
-
-                    // Logo
-                    ShaderMask(
-                      shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-                      child: Text('NEXUS',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 38, fontWeight: FontWeight.w800,
-                          color: Colors.white, letterSpacing: -1.5)),
-                    ),
-                    const SizedBox(height: 6),
-                    Text('Smart Expense Tracking & Loyalty',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 13, color: textMuted)),
-                    const SizedBox(height: 36),
-
-                    // Auth card
-                    Container(
-                      padding: const EdgeInsets.all(26),
-                      decoration: BoxDecoration(
-                        color: surface,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: border),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                            blurRadius: 40, offset: const Offset(0, 16)),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          // Tab bar
-                          Container(
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.04)
-                                  : Colors.black.withValues(alpha: 0.04),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            padding: const EdgeInsets.all(4),
-                            child: TabBar(
-                              controller: _tabs,
-                              indicator: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [AppColors.gold, AppColors.mint]),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              indicatorSize: TabBarIndicatorSize.tab,
-                              labelColor: Colors.white,
-                              unselectedLabelColor: textMuted,
-                              labelStyle: GoogleFonts.spaceGrotesk(
-                                fontWeight: FontWeight.w600, fontSize: 14),
-                              dividerColor: Colors.transparent,
-                              tabs: const [Tab(text: 'Sign In'), Tab(text: 'Register')],
-                            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Hero ──────────────────────────────────────────────
+                  Container(
+                    color: hero,
+                    height: 300 + MediaQuery.of(context).padding.top,
+                    padding: EdgeInsets.fromLTRB(
+                      26, MediaQuery.of(context).padding.top, 0, 0),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // A receipt slip peeking in from the corner
+                        Positioned(
+                          right: -30, top: 26,
+                          child: Transform.rotate(
+                            angle: 0.32,
+                            child: const _HeroSlip(),
                           ),
-                          const SizedBox(height: 24),
+                        ),
+                        Positioned(
+                          left: 0, bottom: 30,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 54),
+                                    child: Text('Nexus',
+                                      style: NxType.display(72, color: Colors.white,
+                                        letterSpacing: -4, height: 1)),
+                                  ),
+                                  const Positioned(
+                                    right: -6, top: -4,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.fromBorderSide(
+                                          BorderSide(color: AppColors.ink, width: 2.5))),
+                                      child: NxStamp(value: '+12', caption: 'POINTS',
+                                        color: AppColors.ink, fill: AppColors.lime,
+                                        size: 62, tilt: -12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text('Every receipt, without\nthe paper.',
+                                style: NxType.body(19, color: AppColors.lime,
+                                  weight: FontWeight.w700, height: 1.2)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
-                          Form(
-                            key: _formKey,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_isRegister) ...[
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          _label('First Name', textDim),
-                                          _field(_firstName, 'First',
-                                            isDark: isDark, border: border,
-                                            textPrimary: textPrimary, textMuted: textMuted,
-                                            validator: (v) => validateName(v, 'First name')),
-                                        ],
-                                      )),
-                                      const SizedBox(width: 12),
-                                      Expanded(child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          _label('Last Name', textDim),
-                                          _field(_lastName, 'Last',
-                                            isDark: isDark, border: border,
-                                            textPrimary: textPrimary, textMuted: textMuted,
-                                            validator: (v) => validateName(v, 'Last name')),
-                                        ],
-                                      )),
+                  // ── Sheet ─────────────────────────────────────────────
+                  Container(
+                    constraints: BoxConstraints(
+                      minHeight: MediaQuery.of(context).size.height * 0.6),
+                    decoration: BoxDecoration(
+                      color: sheet,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                      border: Border(top: BorderSide(color: border, width: 2)),
+                    ),
+                    padding: EdgeInsets.fromLTRB(
+                      22, 22, 22, 24 + MediaQuery.of(context).padding.bottom),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Tab bar
+                        Container(
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: nx.card,
+                            borderRadius: BorderRadius.circular(25),
+                            border: Border.all(color: border, width: 2),
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: TabBar(
+                            controller: _tabs,
+                            indicator: BoxDecoration(
+                              color: isDark ? AppColors.lime : AppColors.ink,
+                              borderRadius: BorderRadius.circular(21),
+                            ),
+                            indicatorSize: TabBarIndicatorSize.tab,
+                            labelColor: isDark ? AppColors.ink : Colors.white,
+                            unselectedLabelColor: textPrimary,
+                            labelStyle: NxType.body(15, weight: FontWeight.w700),
+                            unselectedLabelStyle: NxType.body(15, weight: FontWeight.w700),
+                            dividerColor: Colors.transparent,
+                            splashFactory: NoSplash.splashFactory,
+                            overlayColor: WidgetStateProperty.all(Colors.transparent),
+                            tabs: const [Tab(text: 'Sign In'), Tab(text: 'Register')],
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+
+                        Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_isRegister) ...[
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _label('First Name', textMuted),
+                                        _field(_firstName, 'First',
+                                          isDark: isDark, border: border,
+                                          textPrimary: textPrimary, textMuted: textMuted,
+                                          validator: (v) => validateName(v, 'First name')),
+                                      ],
+                                    )),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _label('Last Name', textMuted),
+                                        _field(_lastName, 'Last',
+                                          isDark: isDark, border: border,
+                                          textPrimary: textPrimary, textMuted: textMuted,
+                                          validator: (v) => validateName(v, 'Last name')),
+                                      ],
+                                    )),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              _label('Email', textMuted),
+                              _field(_email, 'you@example.com',
+                                keyboard: TextInputType.emailAddress,
+                                isDark: isDark, border: border,
+                                textPrimary: textPrimary, textMuted: textMuted,
+                                // Sign-in accepts older addresses; new ones must be valid
+                                validator: (v) {
+                                  if (_isRegister) return validateEmail(v);
+                                  if (v == null || v.isEmpty) return 'Email is required';
+                                  if (!v.contains('@')) return 'Enter a valid email';
+                                  return null;
+                                }),
+                              const SizedBox(height: 16),
+                              _label('Password', textMuted),
+                              _field(_password, '••••••••',
+                                obscure: _obscure,
+                                isDark: isDark, border: border,
+                                textPrimary: textPrimary, textMuted: textMuted,
+                                suffix: IconButton(
+                                  tooltip: _obscure ? 'Show password' : 'Hide password',
+                                  icon: Icon(
+                                    _obscure ? Icons.visibility_off : Icons.visibility,
+                                    color: textMuted, size: 20),
+                                  onPressed: () => setState(() => _obscure = !_obscure),
+                                ),
+                                // Sign-in accepts older passwords; new ones must meet the rules
+                                validator: (v) => _isRegister
+                                    ? validateNewPassword(v)
+                                    : (v == null || v.isEmpty) ? 'Password is required' : null),
+                              if (_isRegister)
+                                PasswordMeter(
+                                  controller: _password,
+                                  textMuted: textMuted,
+                                  track: nx.hairline),
+
+                              if (_error != null) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 11),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.coral,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: AppColors.ink, width: 2),
+                                  ),
+                                  child: Row(children: [
+                                    const Icon(Icons.error_outline,
+                                      color: AppColors.ink, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(_error!,
+                                      style: NxType.body(13.5,
+                                        weight: FontWeight.w600, color: AppColors.ink))),
+                                  ]),
+                                ),
+                              ],
+
+                              const SizedBox(height: 22),
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4, bottom: 4),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(28),
+                                    boxShadow: const [
+                                      BoxShadow(color: AppColors.ink, offset: Offset(4, 4)),
                                     ],
                                   ),
-                                  const SizedBox(height: 16),
-                                ],
-                                _label('Email', textDim),
-                                _field(_email, 'you@example.com',
-                                  keyboard: TextInputType.emailAddress,
-                                  isDark: isDark, border: border,
-                                  textPrimary: textPrimary, textMuted: textMuted,
-                                  // Sign-in accepts older addresses; new ones must be valid
-                                  validator: (v) {
-                                    if (_isRegister) return validateEmail(v);
-                                    if (v == null || v.isEmpty) return 'Email is required';
-                                    if (!v.contains('@')) return 'Enter a valid email';
-                                    return null;
-                                  }),
-                                const SizedBox(height: 16),
-                                _label('Password', textDim),
-                                _field(_password, '••••••••',
-                                  obscure: _obscure,
-                                  isDark: isDark, border: border,
-                                  textPrimary: textPrimary, textMuted: textMuted,
-                                  suffix: IconButton(
-                                    icon: Icon(
-                                      _obscure ? Icons.visibility_off : Icons.visibility,
-                                      color: textMuted, size: 18),
-                                    onPressed: () => setState(() => _obscure = !_obscure),
-                                  ),
-                                  // Sign-in accepts older passwords; new ones must meet the rules
-                                  validator: (v) => _isRegister
-                                      ? validateNewPassword(v)
-                                      : (v == null || v.isEmpty) ? 'Password is required' : null),
-                                if (_isRegister)
-                                  PasswordMeter(
-                                    controller: _password,
-                                    textMuted: textMuted,
-                                    track: border),
-
-                                if (_error != null) ...[
-                                  const SizedBox(height: 16),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.alert.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: AppColors.alert.withValues(alpha: 0.3)),
-                                    ),
-                                    child: Row(children: [
-                                      const Icon(Icons.error_outline,
-                                        color: AppColors.alert, size: 16),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(_error!,
-                                        style: GoogleFonts.dmSans(
-                                          color: AppColors.alert, fontSize: 13))),
-                                    ]),
-                                  ),
-                                ],
-
-                                const SizedBox(height: 20),
-                                SizedBox(
-                                  width: double.infinity, height: 50,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: AppColors.goldGlow,
-                                      borderRadius: BorderRadius.circular(14),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppColors.gold.withValues(alpha: 0.3),
-                                          blurRadius: 16, offset: const Offset(0, 6)),
-                                      ],
-                                    ),
+                                  child: SizedBox(
+                                    width: double.infinity,
                                     child: ElevatedButton(
                                       onPressed: _loading ? null : _submit,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.transparent,
-                                        shadowColor: Colors.transparent,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(14)),
-                                      ),
+                                      style: NxButtonStyle.solid(nx,
+                                        fill: AppColors.lime, text: AppColors.ink, height: 56)
+                                        .copyWith(
+                                          side: WidgetStateProperty.all(
+                                            const BorderSide(color: AppColors.ink, width: 2)),
+                                          textStyle: WidgetStateProperty.all(
+                                            NxType.display(18, weight: FontWeight.w700,
+                                              letterSpacing: -0.2))),
                                       child: _loading
                                           ? const SizedBox(width: 20, height: 20,
                                               child: CircularProgressIndicator(
-                                                strokeWidth: 2, color: Colors.white))
-                                          : Text(
-                                              _isRegister ? 'Create Account' : 'Sign In',
-                                              style: GoogleFonts.spaceGrotesk(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 15, color: Colors.white)),
+                                                strokeWidth: 2.5, color: AppColors.ink))
+                                          : Text(_isRegister ? 'Create Account' : 'Sign In'),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 14),
+                              Center(
+                                child: TextButton(
+                                  onPressed: () => _tabs.animateTo(_isRegister ? 0 : 1),
+                                  child: Text(
+                                    _isRegister
+                                        ? 'Have an account? Sign in instead'
+                                        : 'New here? Create an account',
+                                    style: NxType.body(14, color: textPrimary,
+                                      weight: FontWeight.w700).copyWith(
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: textPrimary)),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 40),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
       ),
+    ),
     );
   }
 
   Widget _label(String text, Color color) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
-    child: Text(text, style: GoogleFonts.dmSans(
-      fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+    child: Text(text.toUpperCase(), style: NxType.label(color)),
   );
 
   Widget _field(
@@ -326,32 +374,48 @@ class _AuthScreenState extends State<AuthScreen>
       obscureText: obscure,
       keyboardType: keyboard,
       validator: validator,
-      style: GoogleFonts.dmSans(color: textPrimary, fontSize: 15),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.dmSans(color: textMuted),
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: isDark
-            ? Colors.white.withValues(alpha: 0.04)
-            : Colors.black.withValues(alpha: 0.03),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: border),
+      style: NxType.body(15.5, color: textPrimary),
+      decoration: nxInput(Nx.of(context), hint: hint, suffix: suffix),
+    );
+}
+
+/// Decorative till slip in the sign-in hero.
+class _HeroSlip extends StatelessWidget {
+  const _HeroSlip();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(double w, Color c, {double h = 9}) => Container(
+      width: w, height: h,
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3)));
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: 150,
+        child: Column(
+          children: [
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  bar(90, AppColors.ink, h: 11),
+                  const DashedRule(color: AppColors.ink, thickness: 1.5),
+                  const SizedBox(height: 8),
+                  bar(110, AppColors.dotted),
+                  bar(80, AppColors.dotted),
+                  const DashedRule(color: AppColors.ink, thickness: 1.5),
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight,
+                    child: bar(56, AppColors.coral, h: 13)),
+                ],
+              ),
+            ),
+            const ReceiptEdge(color: AppColors.ink, height: 9),
+          ],
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.gold.withValues(alpha: 0.6)),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.alert.withValues(alpha: 0.5)),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.alert.withValues(alpha: 0.7)),
-        ),
-        errorStyle: GoogleFonts.dmSans(color: AppColors.alert),
       ),
     );
+  }
 }

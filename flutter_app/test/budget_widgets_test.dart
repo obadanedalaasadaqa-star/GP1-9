@@ -29,7 +29,7 @@ void main() {
   group('BudgetBar', () {
     test('colour: category under 80%, gold 80-99%, alert from 100%', () {
       expect(BudgetBar.colorFor(status(50, 25)), CategoryColors.of('Food'));
-      expect(BudgetBar.colorFor(status(50, 42.5)), AppColors.gold);
+      expect(BudgetBar.colorFor(status(50, 42.5)), AppColors.amber);
       expect(BudgetBar.colorFor(status(50, 60)), AppColors.alert);
     });
 
@@ -54,7 +54,7 @@ void main() {
       await pump(tester, BudgetBar(status: status(50, 0)));
       final track = tester.getSize(find.byKey(const ValueKey('budget-bar-track')));
       expect(track.width, 360);
-      expect(track.height, 8);
+      expect(track.height, 18); // the thicker redesign bar
       expect(tester.getSize(find.byKey(const ValueKey('budget-bar-fill'))).width, 0);
 
       await pump(tester, BudgetBar(status: status(50, 25)));
@@ -74,7 +74,7 @@ void main() {
     await pump(tester, BudgetAlertBanner(alert: alert()));
     expect(find.text('Food budget: 85% used'), findsOneWidget);
     expect(find.text('42.50 of 50.00 JD used in November 2026'), findsOneWidget);
-    expect(BudgetAlertBanner.colorFor(alert()), AppColors.gold);
+    expect(BudgetAlertBanner.colorFor(alert()), AppColors.amber);
     expect(BudgetAlertBanner.colorFor(alert(level: 100, percent: 110, spent: 55)), AppColors.alert);
   });
 

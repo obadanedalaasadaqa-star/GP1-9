@@ -19,9 +19,9 @@ class PasswordMeter extends StatelessWidget {
 
   static const _levels = {
     PasswordStrength.weak:   (1, 'Weak',   AppColors.alert),
-    PasswordStrength.fair:   (2, 'Fair',   AppColors.gold),
-    PasswordStrength.good:   (3, 'Good',   AppColors.blueLight),
-    PasswordStrength.strong: (4, 'Strong', AppColors.mint),
+    PasswordStrength.fair:   (2, 'Fair',   AppColors.amber),
+    PasswordStrength.good:   (3, 'Good',   AppColors.cobaltLight),
+    PasswordStrength.strong: (4, 'Strong', AppColors.teal),
   };
 
   @override
@@ -45,10 +45,10 @@ class PasswordMeter extends StatelessWidget {
                     Expanded(
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
-                        height: 5,
+                        height: 8,
                         decoration: BoxDecoration(
                           color: i < filled ? color : track,
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     ),
@@ -59,7 +59,7 @@ class PasswordMeter extends StatelessWidget {
                     width: 48,
                     child: Text(label,
                       textAlign: TextAlign.right,
-                      style: GoogleFonts.spaceGrotesk(
+                      style: GoogleFonts.bricolageGrotesque(
                         fontSize: 12, fontWeight: FontWeight.w700, color: color)),
                   ),
                 ],
@@ -77,12 +77,12 @@ class PasswordMeter extends StatelessWidget {
                             ? Icons.check_circle_rounded
                             : Icons.radio_button_unchecked_rounded,
                         size: 14,
-                        color: rule.test(password) ? AppColors.mint : textMuted,
+                        color: rule.test(password) ? AppColors.teal : textMuted,
                       ),
                       const SizedBox(width: 8),
                       Text(rule.label,
-                        style: GoogleFonts.dmSans(
-                          fontSize: 12,
+                        style: GoogleFonts.dmMono(
+                          fontSize: 11.5,
                           color: rule.test(password) ? AppColors.mint : textMuted)),
                     ],
                   ),

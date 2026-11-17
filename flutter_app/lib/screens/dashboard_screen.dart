@@ -1,14 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/money.dart';
 import '../core/realtime_service.dart';
 import '../core/receipt_model.dart';
-import '../core/theme_provider.dart';
 import '../widgets/insight_card.dart';
 import '../widgets/offline_banner.dart';
 import 'ai_screen.dart';
@@ -16,7 +16,9 @@ import 'receipt_detail_screen.dart';
 import 'verify_email_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  /// Opens the Archive tab ("All receipts"); null hides the link.
+  final VoidCallback? onOpenArchive;
+  const DashboardScreen({super.key, this.onOpenArchive});
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
@@ -24,7 +26,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   List<Receipt> _receipts = [];
   bool _loading = true;
-  bool _offline = false;     // showing receipts saved on the phone
+  bool _offline = false; // showing receipts saved on the phone
   DateTime? _savedAt;
   ValueListenable<int>? _refreshTick; // live receipts / reconnect / resume
   int _requestId = 0; // ignores responses older than the latest load
@@ -58,9 +60,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted && id == _requestId) {
         setState(() {
           _receipts = result.receipts;
-          _offline  = result.offline;
-          _savedAt  = result.savedAt;
-          _loading  = false;
+          _offline = result.offline;
+          _savedAt = result.savedAt;
+          _loading = false;
         });
       }
     } catch (_) {
@@ -71,9 +73,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Pull to refresh: the receipts and the AI teaser. Not from _load, which is
   // also the refreshTick listener (the card listens itself).
   Future<void> _refreshAll() => Future.wait([
-        _load(),
-        _insightKey.currentState?.reload() ?? Future<void>.value(),
-      ]);
+    _load(),
+    _insightKey.currentState?.reload() ?? Future<void>.value(),
+  ]);
 
   // Month totals
   double get _monthTotal {
@@ -90,14 +92,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .length;
   }
 
+  double _totalFor(int year, int month) => _receipts
+      .where((r) => r.date.year == year && r.date.month == month)
+      .fold(0.0, (sum, r) => sum + r.totalAmount);
+
+  /// Last month's total, for the "x% less than October" chip.
+  double get _lastMonthTotal {
+    final now = DateTime.now();
+    final last = DateTime(now.year, now.month - 1);
+    return _totalFor(last.year, last.month);
+  }
+
+  /// Points from receipts in the last 7 days, for the stamp on the card.
+  int get _pointsThisWeek {
+    final since = DateTime.now().subtract(const Duration(days: 7));
+    return _receipts
+        .where((r) => r.date.isAfter(since))
+        .fold(0, (sum, r) => sum + r.pointsEarned);
+  }
+
   // Today's receipts
   List<Receipt> get _todayReceipts {
     final now = DateTime.now();
     return _receipts
-        .where((r) =>
-            r.date.year == now.year &&
-            r.date.month == now.month &&
-            r.date.day == now.day)
+        .where(
+          (r) =>
+              r.date.year == now.year &&
+              r.date.month == now.month &&
+              r.date.day == now.day,
+        )
         .toList();
   }
 
@@ -105,530 +128,637 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Receipt> get _recentReceipts {
     final now = DateTime.now();
     return _receipts
-        .where((r) => !(r.date.year == now.year &&
-            r.date.month == now.month &&
-            r.date.day == now.day))
+        .where(
+          (r) =>
+              !(r.date.year == now.year &&
+                  r.date.month == now.month &&
+                  r.date.day == now.day),
+        )
         .take(5)
         .toList();
   }
 
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  static const _monthsLong = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  static const _days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
   @override
   Widget build(BuildContext context) {
-    final user       = context.watch<AuthProvider>().user;
+    final user = context.watch<AuthProvider>().user;
     if (user == null) return const SizedBox.shrink();
-    final isDark     = context.watch<ThemeProvider>().isDark;
-    final firstName  = user.firstName;
-
-    final bg          = isDark ? AppColors.bg      : AppColors.bgLight;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
-
+    final nx = Nx.of(context);
     final now = DateTime.now();
-    final monthName = ['Jan','Feb','Mar','Apr','May','Jun',
-        'Jul','Aug','Sep','Oct','Nov','Dec'][now.month - 1];
+    final monthLong = _monthsLong[now.month - 1];
+    final lastMonthLong = _monthsLong[(now.month + 10) % 12];
+    final hero = nx.dark ? AppColors.ink : AppColors.cobalt;
+    final heroMuted = nx.dark ? AppColors.textMuted : AppColors.cobaltSoft;
+    final initials =
+        (user.firstName.isNotEmpty ? user.firstName[0] : '') +
+        (user.lastName.isNotEmpty ? user.lastName[0] : '');
+    final last = _lastMonthTotal;
+    final change = last > 0 ? (_monthTotal - last) / last * 100 : null;
 
-    return Scaffold(
-      backgroundColor: bg,
-      body: Container(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+      backgroundColor: nx.sheet,
+      body: DecoratedBox(
+        // Hero colour above, sheet colour below, so pull-to-refresh and short
+        // pages never show the wrong colour.
         decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(-0.6, -0.9),
-            radius: 1.3,
-            colors: [
-              AppColors.mint.withValues(alpha: isDark ? 0.05 : 0.03),
-              bg,
-            ],
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [hero, hero, nx.sheet, nx.sheet],
+            stops: const [0, 0.5, 0.5, 1],
           ),
         ),
-        child: SafeArea(
-          child: RefreshIndicator(
-            color: AppColors.gold,
-            backgroundColor: surface,
-            onRefresh: _refreshAll,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_offline) ...[
-                    OfflineBanner(savedAt: _savedAt),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── Greeting row ──────────────────────────────────────────
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Good day,',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13, color: textMuted)),
-                          const SizedBox(height: 2),
-                          Text(firstName,
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 28, fontWeight: FontWeight.w800,
-                              color: textPrimary, letterSpacing: -0.5)),
-                        ],
-                      ),
-                      // Loyalty badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.goldGlow,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.gold.withValues(alpha: 0.3),
-                              blurRadius: 12, offset: const Offset(0, 4)),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.star_rounded,
-                              color: Colors.white, size: 14),
-                            const SizedBox(width: 5),
-                            Text('${user.loyaltyPoints} pts',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 12, fontWeight: FontWeight.w700,
-                                color: Colors.white)),
-                          ],
-                        ),
-                      ),
-                    ],
+        child: RefreshIndicator(
+          color: AppColors.ink,
+          backgroundColor: AppColors.lime,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Hero ──────────────────────────────────────────
+                Container(
+                  color: hero,
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    MediaQuery.of(context).padding.top + 18,
+                    24,
+                    0,
                   ),
-                  const SizedBox(height: 6),
-                  Text('Your spending overview for $monthName ${now.year}',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13, color: textMuted)),
-                  const SizedBox(height: 24),
-
-                  // ── Verify email banner ───────────────────────────────────
-                  if (!user.emailVerified) ...[
-                    GestureDetector(
-                      onTap: () => VerifyEmailScreen.open(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppColors.gold.withValues(alpha: 0.35)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.mark_email_unread_rounded,
-                              color: AppColors.gold, size: 22),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Verify your email',
-                                    style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 14, fontWeight: FontWeight.w700,
-                                      color: textPrimary)),
-                                  const SizedBox(height: 2),
-                                  Text('Confirm ${user.email} to secure your account.',
-                                    style: GoogleFonts.dmSans(
-                                      fontSize: 12, color: textMuted)),
-                                ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_offline) ...[
+                        OfflineBanner(savedAt: _savedAt),
+                        const SizedBox(height: 16),
+                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${_days[now.weekday - 1]} ${now.day} '
+                                  '${_months[now.month - 1].toUpperCase()}',
+                                  style: NxType.mono(
+                                    11,
+                                    color: heroMuted,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Marhaba, ${_capitalized(user.firstName)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: NxType.display(
+                                    24,
+                                    color: Colors.white,
+                                    weight: FontWeight.w700,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.lime,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppColors.ink,
+                                width: 2,
                               ),
                             ),
-                            const Icon(Icons.chevron_right_rounded,
-                              color: AppColors.gold),
-                          ],
-                        ),
+                            child: Text(
+                              initials.toUpperCase(),
+                              style: NxType.display(
+                                16,
+                                color: AppColors.ink,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 22),
+                      Text(
+                        'SPENT IN ${monthLong.toUpperCase()}',
+                        style: NxType.label(heroMuted),
+                      ),
+                      const SizedBox(height: 6),
+                      _loading
+                          ? Container(
+                              width: 200,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            )
+                          : FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: formatJd(_monthTotal),
+                                      style: NxType.display(
+                                        78,
+                                        color: nx.dark
+                                            ? AppColors.lime
+                                            : Colors.white,
+                                        letterSpacing: -3,
+                                        height: 0.95,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: ' JD',
+                                      style: NxType.display(
+                                        26,
+                                        color: nx.dark
+                                            ? Colors.white
+                                            : AppColors.lime,
+                                        weight: FontWeight.w700,
+                                        letterSpacing: 0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (!_loading && change != null)
+                            _HeroChip(
+                              filled: true,
+                              icon: change <= 0
+                                  ? Icons.arrow_downward_rounded
+                                  : Icons.arrow_upward_rounded,
+                              text: change.abs() < 0.5
+                                  ? 'Same as $lastMonthLong'
+                                  : '${change.abs().round()}% '
+                                        '${change < 0 ? 'less' : 'more'} '
+                                        'than $lastMonthLong',
+                            ),
+                          if (!_loading)
+                            _HeroChip(
+                              text: _monthCount == 0
+                                  ? 'No receipts this month'
+                                  : '$_monthCount receipt${_monthCount == 1 ? '' : 's'}',
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      _LoyaltyCard(
+                        points: user.loyaltyPoints,
+                        thisWeek: _loading ? 0 : _pointsThisWeek,
+                      ),
+                      const SizedBox(height: 26),
+                    ],
+                  ),
+                ),
+
+                // ── Sheet ─────────────────────────────────────────
+                Container(
+                  decoration: BoxDecoration(
+                    color: nx.sheet,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28),
                     ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // ── Active Wallet card ────────────────────────────────────
-                  _WalletCard(
-                    monthTotal: _monthTotal,
-                    monthCount: _monthCount,
-                    monthName: monthName,
-                    year: now.year,
-                    surface: surface,
-                    border: border,
-                    textPrimary: textPrimary,
-                    textMuted: textMuted,
-                    isDark: isDark,
-                    loading: _loading,
                   ),
-                  const SizedBox(height: 24),
+                  transform: Matrix4.translationValues(0, -2, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 140),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!user.emailVerified) ...[
+                        NxCard(
+                          color: AppColors.amber,
+                          borderColor: AppColors.ink,
+                          shadow: 0,
+                          padding: const EdgeInsets.all(14),
+                          onTap: () => VerifyEmailScreen.open(context),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.mark_email_unread_outlined,
+                                color: AppColors.ink,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Verify your email',
+                                      style: NxType.display(
+                                        16,
+                                        color: AppColors.ink,
+                                        weight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Confirm ${user.email} to secure your account.',
+                                      style: NxType.body(
+                                        12.5,
+                                        color: AppColors.ink,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: AppColors.ink,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                      ],
 
-                  // ── AI insight teaser ─────────────────────────────────────
-                  InsightCard(
-                    key: _insightKey,
-                    compact: true,
-                    onOpen: () => AiScreen.open(context),
+                      _SectionHead(
+                        title: 'Today',
+                        action: widget.onOpenArchive == null
+                            ? null
+                            : 'All receipts',
+                        onAction: widget.onOpenArchive,
+                      ),
+                      const SizedBox(height: 12),
+                      if (_loading)
+                        _buildMiniLoader(nx)
+                      else if (_todayReceipts.isEmpty)
+                        _buildEmpty(
+                          nx,
+                          'No receipts today. Show your '
+                          'code at the till and they land here.',
+                        )
+                      else
+                        ..._todayReceipts.map(
+                          (r) => _CompactReceiptTile(receipt: r, today: true),
+                        ),
+
+                      const SizedBox(height: 10),
+                      InsightCard(
+                        key: _insightKey,
+                        compact: true,
+                        onOpen: () => AiScreen.open(context),
+                      ),
+                      const SizedBox(height: 24),
+
+                      const _SectionHead(title: 'Recent activity'),
+                      const SizedBox(height: 12),
+                      if (_loading)
+                        _buildMiniLoader(nx)
+                      else if (_recentReceipts.isEmpty)
+                        _buildEmpty(nx, 'No recent activity')
+                      else
+                        ..._recentReceipts.map(
+                          (r) => _CompactReceiptTile(receipt: r),
+                        ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-
-                  // ── Today's receipts ──────────────────────────────────────
-                  _SectionLabel(
-                    label: "TODAY'S RECEIPTS",
-                    textMuted: textMuted,
-                  ),
-                  const SizedBox(height: 12),
-
-                  if (_loading)
-                    _buildMiniLoader()
-                  else if (_todayReceipts.isEmpty)
-                    _buildTodayEmpty(surface, border, textPrimary, textMuted)
-                  else
-                    ..._todayReceipts.map((r) => _CompactReceiptTile(
-                      receipt: r,
-                      catColor: CategoryColors.of(r.category),
-                      surface: surface,
-                      border: border,
-                      textPrimary: textPrimary,
-                      textMuted: textMuted,
-                    )),
-
-                  const SizedBox(height: 24),
-
-                  // ── Recent activity ───────────────────────────────────────
-                  _SectionLabel(
-                    label: 'RECENT ACTIVITY',
-                    textMuted: textMuted,
-                  ),
-                  const SizedBox(height: 12),
-
-                  if (_loading)
-                    _buildMiniLoader()
-                  else if (_recentReceipts.isEmpty)
-                    _buildRecentEmpty(surface, border, textPrimary, textMuted)
-                  else
-                    ..._recentReceipts.map((r) => _CompactReceiptTile(
-                      receipt: r,
-                      catColor: CategoryColors.of(r.category),
-                      surface: surface,
-                      border: border,
-                      textPrimary: textPrimary,
-                      textMuted: textMuted,
-                    )),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
+    ),
     );
   }
 
-  Widget _buildMiniLoader() => Padding(
+  /// "obada" → "Obada" for the greeting (the stored name is unchanged).
+  static String _capitalized(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  Widget _buildMiniLoader(Nx nx) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 20),
     child: Center(
       child: SizedBox(
-        width: 20, height: 20,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: AppColors.gold,
-        ),
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2.5, color: nx.accent),
       ),
     ),
   );
 
-  Widget _buildTodayEmpty(Color surface, Color border,
-      Color textPrimary, Color textMuted) =>
-    Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
-      ),
+  Widget _buildEmpty(Nx nx, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: ReceiptTile(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Row(
         children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.gold.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.receipt_long_rounded,
-              color: AppColors.gold, size: 18),
+          NxIconTile(
+            icon: Icons.receipt_long_outlined,
+            color: nx.dark ? AppColors.lavender : AppColors.paper,
+            size: 38,
           ),
           const SizedBox(width: 14),
-          Text('No receipts today',
-            style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
-        ],
-      ),
-    );
-
-  Widget _buildRecentEmpty(Color surface, Color border,
-      Color textPrimary, Color textMuted) =>
-    Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.blue.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.history_rounded,
-              color: AppColors.blue, size: 18),
+          Expanded(
+            child: Text(text, style: NxType.body(13.5, color: nx.muted)),
           ),
-          const SizedBox(width: 14),
-          Text('No recent activity',
-            style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
         ],
       ),
-    );
+    ),
+  );
 }
 
-// ── Active Wallet Card ────────────────────────────────────────────────────────
+// ── Hero chip ────────────────────────────────────────────────────────────────
 
-class _WalletCard extends StatelessWidget {
-  final double monthTotal;
-  final int    monthCount;
-  final String monthName;
-  final int    year;
-  final Color  surface;
-  final Color  border;
-  final Color  textPrimary;
-  final Color  textMuted;
-  final bool   isDark;
-  final bool   loading;
+class _HeroChip extends StatelessWidget {
+  final String text;
+  final IconData? icon;
+  final bool filled;
+  const _HeroChip({required this.text, this.icon, this.filled = false});
 
-  const _WalletCard({
-    required this.monthTotal,
-    required this.monthCount,
-    required this.monthName,
-    required this.year,
-    required this.surface,
-    required this.border,
-    required this.textPrimary,
-    required this.textMuted,
-    required this.isDark,
-    required this.loading,
-  });
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 28,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    decoration: BoxDecoration(
+      color: filled ? AppColors.lime : Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      border: filled ? null : Border.all(color: Colors.white, width: 1.5),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 13, color: AppColors.ink),
+          const SizedBox(width: 5),
+        ],
+        Text(
+          text,
+          style: NxType.body(
+            12.5,
+            color: filled ? AppColors.ink : Colors.white,
+            weight: filled ? FontWeight.w700 : FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ── Loyalty card ─────────────────────────────────────────────────────────────
+
+class _LoyaltyCard extends StatelessWidget {
+  final int points;
+  final int thisWeek;
+  const _LoyaltyCard({required this.points, required this.thisWeek});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.gold.withValues(alpha: isDark ? 0.08 : 0.05),
-            blurRadius: 28, offset: const Offset(0, 8)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-
-          // Header row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
+    final nx = Nx.of(context);
+    final fg = nx.dark ? Colors.white : AppColors.ink;
+    return NxCard(
+      tilt: -1.5,
+      color: nx.dark ? AppColors.cobalt : Colors.white,
+      borderColor: AppColors.ink,
+      shadowColor: nx.dark ? AppColors.lime : AppColors.ink,
+      padding: const EdgeInsets.fromLTRB(18, 12, 12, 12),
+      child: SizedBox(
+        height: 60,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.goldGlow,
-                      borderRadius: BorderRadius.circular(10),
+                  Text(
+                    'LOYALTY CARD',
+                    style: NxType.label(
+                      nx.dark ? AppColors.cobaltSoft : AppColors.textMutedLight,
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.account_balance_wallet_rounded,
-                      color: Colors.white, size: 18),
                   ),
-                  const SizedBox(width: 10),
-                  Text('Active Wallet',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 14, fontWeight: FontWeight.w700,
-                      color: textPrimary)),
+                  const SizedBox(height: 2),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: formatPoints(points),
+                          style: NxType.display(30, color: fg, height: 1),
+                        ),
+                        TextSpan(
+                          text: '  points',
+                          style: NxType.body(
+                            14,
+                            color: fg,
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: AppColors.gold.withValues(alpha: 0.25)),
-                ),
-                child: Text('$monthName $year',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 11, fontWeight: FontWeight.w600,
-                    color: AppColors.gold)),
+            ),
+            if (thisWeek > 0)
+              NxStamp(
+                value: '+$thisWeek',
+                caption: 'THIS WEEK',
+                color: nx.dark ? AppColors.lime : AppColors.danger,
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Amount
-          loading
-              ? Container(
-                  width: 140, height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                )
-              : ShaderMask(
-                  shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-                  child: Text(
-                    '${formatJd(monthTotal)} JD',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 38, fontWeight: FontWeight.w800,
-                      color: Colors.white, letterSpacing: -1),
-                  ),
-                ),
-          const SizedBox(height: 8),
-
-          // Subtitle
-          loading
-              ? Container(
-                  width: 100, height: 16,
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                )
-              : Text(
-                  monthCount == 0
-                      ? 'No receipts this month'
-                      : 'across $monthCount receipt${monthCount == 1 ? '' : 's'} this month',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 13, color: textMuted)),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── Section label ─────────────────────────────────────────────────────────────
+// ── Section head ─────────────────────────────────────────────────────────────
 
-class _SectionLabel extends StatelessWidget {
-  final String label;
-  final Color  textMuted;
-  const _SectionLabel({required this.label, required this.textMuted});
+class _SectionHead extends StatelessWidget {
+  final String title;
+  final String? action;
+  final VoidCallback? onAction;
+  const _SectionHead({required this.title, this.action, this.onAction});
 
   @override
-  Widget build(BuildContext context) =>
-    Text(label,
-      style: GoogleFonts.spaceGrotesk(
-        fontSize: 11, fontWeight: FontWeight.w700,
-        color: textMuted, letterSpacing: 2));
+  Widget build(BuildContext context) {
+    final nx = Nx.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: NxType.display(22, color: nx.text, letterSpacing: -0.5),
+          ),
+        ),
+        if (action != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                action!,
+                style:
+                    NxType.body(
+                      13,
+                      color: nx.accent,
+                      weight: FontWeight.w700,
+                    ).copyWith(
+                      decoration: TextDecoration.underline,
+                      decorationColor: nx.accent,
+                    ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 // ── Compact receipt tile ──────────────────────────────────────────────────────
 
 class _CompactReceiptTile extends StatelessWidget {
   final Receipt receipt;
-  final Color   catColor;
-  final Color   surface;
-  final Color   border;
-  final Color   textPrimary;
-  final Color   textMuted;
-
-  const _CompactReceiptTile({
-    required this.receipt,
-    required this.catColor,
-    required this.surface,
-    required this.border,
-    required this.textPrimary,
-    required this.textMuted,
-  });
+  final bool today;
+  const _CompactReceiptTile({required this.receipt, this.today = false});
 
   @override
   Widget build(BuildContext context) {
-    // Tap anywhere on the tile for the full receipt.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => ReceiptDetailScreen.open(context, receipt),
-      child: _tile(),
+    final nx = Nx.of(context);
+    final d = receipt.date;
+    final when = today
+        ? '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}'
+        : _formatDate(d);
+    final n = receipt.items.length;
+    final meta = [
+      when,
+      if (n > 0) '$n item${n == 1 ? '' : 's'}',
+      if (receipt.pointsEarned > 0) '+${receipt.pointsEarned} pts',
+    ].join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ReceiptTile(
+        // Tap anywhere on the tile for the full receipt.
+        onTap: () => ReceiptDetailScreen.open(context, receipt),
+        child: Row(
+          children: [
+            NxIconTile(
+              icon: categoryIcon(receipt.category),
+              color: _tileColor(nx, receipt.category),
+              tilt: receipt.storeName.length.isEven ? -4 : 3,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    receipt.storeName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: NxType.body(
+                      15,
+                      color: nx.text,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: NxType.mono(11.5, color: nx.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: formatJd(receipt.totalAmount),
+                    style: NxType.mono(
+                      17,
+                      color: nx.text,
+                      weight: FontWeight.w500,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' JD',
+                    style: NxType.mono(11, color: nx.muted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _tile() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          // Icon circle
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(
-              color: catColor.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Icon(_catIcon(receipt.category), color: catColor, size: 18),
-          ),
-          const SizedBox(width: 12),
-
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(receipt.storeName,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 13, fontWeight: FontWeight.w700,
-                    color: textPrimary)),
-                const SizedBox(height: 2),
-                Text(_formatDate(receipt.date),
-                  style: GoogleFonts.dmSans(
-                    fontSize: 11, color: textMuted)),
-              ],
-            ),
-          ),
-
-          // Amount
-          Text('${formatJd(receipt.totalAmount)} JD',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 14, fontWeight: FontWeight.w800,
-              color: catColor)),
-        ],
-      ),
-    );
-  }
-
-  IconData _catIcon(String cat) {
-    switch (cat) {
-      case 'Supermarket': return Icons.shopping_cart_rounded;
-      case 'Food':        return Icons.restaurant_rounded;
-      case 'Pharmacy':    return Icons.local_pharmacy_rounded;
-      case 'Clothing':    return Icons.checkroom_rounded;
-      case 'Electronics': return Icons.devices_rounded;
-      default:            return Icons.receipt_long_rounded;
-    }
+  static Color _tileColor(Nx nx, String category) {
+    final c = CategoryColors.of(category);
+    // Cobalt disappears on the dark rows; use its lighter tint there.
+    return nx.dark && c == AppColors.cobalt ? AppColors.cobaltLight : c;
   }
 
   String _formatDate(DateTime d) {
-    const m = ['Jan','Feb','Mar','Apr','May','Jun',
-                'Jul','Aug','Sep','Oct','Nov','Dec'];
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${d.day} ${m[d.month - 1]} ${d.year}';
   }
 }

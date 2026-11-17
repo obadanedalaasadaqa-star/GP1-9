@@ -57,7 +57,7 @@ void main() {
       });
       expect(find.text(summary), findsOneWidget);
       expect(find.text(tip), findsOneWidget);
-      expect(find.byIcon(Icons.lightbulb_rounded), findsOneWidget);
+      expect(find.text('TIP'), findsOneWidget);
       expect(find.text('AI-generated · updated 2 h ago'), findsOneWidget);
     });
 

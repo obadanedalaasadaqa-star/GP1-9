@@ -10,7 +10,7 @@ import 'bar_list.dart';
 String compareChangeText(String change) =>
     change == 'new' ? 'New' : change.startsWith('-') ? '−${change.substring(1)}' : change;
 
-/// Two bars on the same scale: period A (gold) and period B (muted), with
+/// Two bars on the same scale: period A (cobalt) and period B (muted), with
 /// optional values and a change chip (up is alert, down is mint, as on Trends).
 class CompareBars extends StatelessWidget {
   final String aLabel;
@@ -49,7 +49,8 @@ class CompareBars extends StatelessWidget {
         BarList(
           showValues: showValues,
           items: [
-            BarItem(aLabel, aValue, '${formatJd(aValue)} JD', color: AppColors.gold),
+            BarItem(aLabel, aValue, '${formatJd(aValue)} JD', color: Theme.of(context).brightness == Brightness.dark
+                ? AppColors.cobaltLight : AppColors.cobalt),
             BarItem(bLabel, bValue, '${formatJd(bValue)} JD', color: textMuted.withValues(alpha: 0.6)),
           ],
         ),
@@ -62,7 +63,7 @@ class CompareBars extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(text,
-              style: GoogleFonts.dmSans(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
+              style: GoogleFonts.instrumentSans(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
           ),
         ],
       ],

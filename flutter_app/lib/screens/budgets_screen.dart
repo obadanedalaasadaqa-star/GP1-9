@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/budget_models.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/money.dart';
 import '../core/realtime_service.dart';
-import '../core/theme_provider.dart';
 import '../widgets/budget_bar.dart';
 import '../widgets/offline_banner.dart';
 
@@ -110,154 +110,141 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = context.watch<ThemeProvider>().isDark;
-    final bg          = isDark ? AppColors.bg      : AppColors.bgLight;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
+    final nx = Nx.of(context);
+    final pageBg = nx.dark ? AppColors.ink : AppColors.amber;
+    final onPage = nx.dark ? Colors.white : AppColors.ink;
     final list = _list;
 
-    return Scaffold(
-      backgroundColor: bg,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: Theme.of(context).brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Scaffold(
+      backgroundColor: pageBg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
           children: [
             Row(
               children: [
-                IconButton(
-                  tooltip: 'Back',
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: Icon(Icons.arrow_back_rounded, color: textPrimary)),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text('Monthly budgets',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 24, fontWeight: FontWeight.w800,
-                      color: textPrimary, letterSpacing: -0.5)),
-                ),
+                const NxBackButton(),
+                const Spacer(),
+                if (list != null)
+                  Text(list.label,
+                    style: NxType.mono(13, color: onPage,
+                      weight: FontWeight.w500, letterSpacing: 1.5)),
               ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 4, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (list != null)
-                    Text(list.label,
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gold)),
-                  const SizedBox(height: 2),
-                  Text("We'll alert you at 80% and 100%.",
-                    style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
-                ],
-              ),
-            ),
+            const SizedBox(height: 18),
+            Text('Monthly budgets',
+              style: NxType.display(36, color: onPage, letterSpacing: -1.5,
+                height: 1)),
+            const SizedBox(height: 6),
+            Text("We'll alert you at 80% and 100%.",
+              style: NxType.body(14, color: onPage, weight: FontWeight.w600)),
+            const SizedBox(height: 18),
             if (_offline && list != null) ...[
               OfflineBanner(savedAt: _savedAt, what: 'budgets'),
               const SizedBox(height: 14),
             ],
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.only(top: 60),
+              Padding(
+                padding: const EdgeInsets.only(top: 60),
                 child: Center(
                   child: SizedBox(width: 22, height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold))),
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: onPage))),
               )
             else if (list == null)
-              _buildError(textPrimary, textMuted)
+              _buildError(nx, onPage)
             else if (list.budgets.isEmpty)
-              _buildEmpty(surface, border, textPrimary, textMuted)
+              _buildEmpty(nx, onPage)
             else
-              _buildList(list, surface, border),
+              _buildList(list, nx),
           ],
         ),
       ),
+    ),
     );
   }
 
-  Widget _buildList(BudgetList list, Color surface, Color border) => Column(
+  Widget _buildList(BudgetList list, Nx nx) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: border),
+      for (final b in list.budgets)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: NxCard(
+            shadow: 0,
+            color: nx.card,
+            borderColor: nx.dark ? AppColors.border : AppColors.ink,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: BudgetBar(
+              key: ValueKey('budget-${b.category}'),
+              status: b,
+              onTap: _offline ? null : () => _openSheet(edit: b)),
+          ),
         ),
-        child: Column(
-          children: [
-            for (final b in list.budgets)
-              BudgetBar(
-                key: ValueKey('budget-${b.category}'),
-                status: b,
-                onTap: _offline ? null : () => _openSheet(edit: b)),
-          ],
-        ),
-      ),
       if (list.unbudgeted.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        _addButton(),
+        const SizedBox(height: 8),
+        _addButton(nx),
       ],
     ],
   );
 
-  Widget _addButton({String label = 'Add budget'}) => SizedBox(
-    height: 48,
+  Widget _addButton(Nx nx, {String label = 'Add budget'}) => SizedBox(
+    height: 54,
     child: OutlinedButton.icon(
       key: const ValueKey('budget-add'),
       onPressed: _offline ? null : () => _openSheet(),
-      icon: const Icon(Icons.add_rounded, size: 18),
-      label: Text(label,
-        style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 14)),
+      icon: const Icon(Icons.add_rounded, size: 20),
+      label: Text(label),
       style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.gold,
-        side: BorderSide(color: AppColors.gold.withValues(alpha: _offline ? 0.2 : 0.5)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+        backgroundColor: nx.dark ? AppColors.lime : AppColors.ink,
+        foregroundColor: nx.dark ? AppColors.ink : Colors.white,
+        disabledBackgroundColor: (nx.dark ? AppColors.lime : AppColors.ink)
+            .withValues(alpha: 0.35),
+        side: BorderSide.none,
+        textStyle: NxType.body(15, weight: FontWeight.w700),
+        shape: const StadiumBorder()),
     ),
   );
 
-  Widget _buildEmpty(Color surface, Color border, Color textPrimary, Color textMuted) => Padding(
+  Widget _buildEmpty(Nx nx, Color onPage) => Padding(
     padding: const EdgeInsets.only(top: 30),
     child: Column(
       children: [
-        ShaderMask(
-          shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-          child: const Icon(Icons.savings_rounded, size: 48, color: Colors.white),
-        ),
-        const SizedBox(height: 16),
+        NxIconTile(icon: Icons.savings_outlined,
+          color: nx.dark ? AppColors.amber : Colors.white, size: 64, tilt: -6),
+        const SizedBox(height: 18),
         Text('No budgets yet',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 18, fontWeight: FontWeight.w700, color: textPrimary)),
+          style: NxType.display(22, color: onPage)),
         const SizedBox(height: 8),
         Text('Set a monthly amount for a category and see how much is left.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(fontSize: 13, color: textMuted, height: 1.6)),
-        const SizedBox(height: 20),
-        _addButton(label: 'Add a budget'),
+          style: NxType.body(14, color: onPage, height: 1.5)),
+        const SizedBox(height: 22),
+        _addButton(nx, label: 'Add a budget'),
       ],
     ),
   );
 
-  Widget _buildError(Color textPrimary, Color textMuted) => Padding(
+  Widget _buildError(Nx nx, Color onPage) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 40, 12, 32),
     child: Column(
       children: [
-        const Icon(Icons.wifi_off_rounded, color: AppColors.alert, size: 40),
+        Icon(Icons.wifi_off_rounded, color: onPage, size: 40),
         const SizedBox(height: 16),
         Text('Could not load budgets',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 16, fontWeight: FontWeight.w700, color: textPrimary)),
+          style: NxType.display(20, color: onPage)),
         const SizedBox(height: 8),
         Text(_error ?? '', textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+          style: NxType.body(13, color: onPage)),
         const SizedBox(height: 20),
         TextButton(
           onPressed: _load,
           child: Text('Retry',
-            style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, color: AppColors.gold))),
+            style: NxType.body(15, weight: FontWeight.w700, color: onPage)
+              .copyWith(decoration: TextDecoration.underline,
+                decorationColor: onPage))),
       ],
     ),
   );
@@ -381,40 +368,51 @@ class _BudgetEditSheetState extends State<BudgetEditSheet> {
           TextButton(
             key: const ValueKey('budget-remove-confirm'),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove', style: TextStyle(color: AppColors.alert))),
+            child: const Text('Remove', style: TextStyle(color: AppColors.coral))),
         ],
       ),
     );
     if (ok == true) _run(() => ApiClient.deleteBudget(category));
   }
 
+  /// The +/- buttons: whole JD steps of 5 (the field still takes any amount).
+  void _step(int delta) {
+    final current = double.tryParse(normalizeBudgetAmount(_amount.text)) ?? 0;
+    final next = ((current / 5).round() * 5 + delta).clamp(5, 100000);
+    setState(() {
+      _amount.text = next.toString();
+      _error = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark      = context.watch<ThemeProvider>().isDark;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
+    final nx = Nx.of(context);
+    final sheetBg = nx.dark ? AppColors.surface : Colors.white;
 
-    final field = InputDecoration(
-      filled: true,
-      fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: border)),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: AppColors.gold.withValues(alpha: 0.6))),
+    Widget stepButton(IconData icon, int delta, String tip) => Tooltip(
+      message: tip,
+      child: Pressable(
+        onTap: _busy ? null : () => _step(delta),
+        child: Container(
+          width: 52, height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: nx.line, width: 2)),
+          child: Icon(icon, color: nx.text, size: 26),
+        ),
+      ),
     );
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        padding: EdgeInsets.fromLTRB(
+          22, 12, 22, 20 + MediaQuery.of(context).padding.bottom),
         decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: border),
+          color: sheetBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(top: BorderSide(color: nx.line, width: 2)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -422,74 +420,85 @@ class _BudgetEditSheetState extends State<BudgetEditSheet> {
           children: [
             Center(
               child: Container(
-                width: 40, height: 4,
+                width: 44, height: 5,
                 decoration: BoxDecoration(
-                  color: textMuted.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2))),
+                  color: nx.line,
+                  borderRadius: BorderRadius.circular(3))),
             ),
             const SizedBox(height: 18),
             Text(widget.editing ? '${_category ?? ''} budget' : 'Add a budget',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 18, fontWeight: FontWeight.w700, color: textPrimary)),
+              style: NxType.display(26, color: nx.text, letterSpacing: -0.8)),
             const SizedBox(height: 16),
             if (!widget.editing && widget.categories.isNotEmpty) ...[
-              Text('Category', style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
-              const SizedBox(height: 6),
+              Text('CATEGORY', style: NxType.label(nx.muted)),
+              const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 key: const ValueKey('budget-category'),
                 initialValue: _category,
-                decoration: field,
-                dropdownColor: surface,
-                style: GoogleFonts.dmSans(fontSize: 15, color: textPrimary),
+                decoration: nxInput(nx),
+                dropdownColor: sheetBg,
+                borderRadius: BorderRadius.circular(14),
+                style: NxType.body(15.5, color: nx.text, weight: FontWeight.w700),
                 items: [
                   for (final c in widget.categories)
                     DropdownMenuItem(value: c, child: Text(c)),
                 ],
                 onChanged: _busy ? null : (v) => setState(() => _category = v),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
             ],
-            Text('Monthly amount (JD)', style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
-            const SizedBox(height: 6),
-            TextField(
-              key: const ValueKey('budget-amount'),
-              controller: _amount,
-              enabled: !_busy,
-              autofocus: !widget.editing,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: GoogleFonts.spaceGrotesk(fontSize: 18, color: textPrimary),
-              decoration: field.copyWith(hintText: '50', suffixText: 'JD'),
-              onSubmitted: (_) => _save(),
+            Text('MONTHLY AMOUNT', style: NxType.label(nx.muted)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                stepButton(Icons.remove_rounded, -5, 'Less'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('budget-amount'),
+                    controller: _amount,
+                    enabled: !_busy,
+                    autofocus: !widget.editing,
+                    textAlign: TextAlign.center,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: NxType.display(40, color: nx.text, letterSpacing: -1.5),
+                    decoration: InputDecoration(
+                      hintText: '50',
+                      hintStyle: NxType.display(40, color: nx.muted.withValues(alpha: 0.5),
+                        letterSpacing: -1.5),
+                      suffixText: 'JD',
+                      suffixStyle: NxType.display(18, color: nx.text,
+                        weight: FontWeight.w700),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: nx.line, width: 2)),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: nx.accent, width: 3)),
+                      disabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: nx.hairline, width: 2)),
+                    ),
+                    onSubmitted: (_) => _save(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                stepButton(Icons.add_rounded, 5, 'More'),
+              ],
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(_error!,
                 key: const ValueKey('budget-error'),
-                style: GoogleFonts.dmSans(fontSize: 12.5, color: AppColors.alert)),
+                textAlign: TextAlign.center,
+                style: NxType.body(13, color: nx.danger, weight: FontWeight.w600)),
             ],
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 48,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppColors.goldGlow,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ElevatedButton(
-                  key: const ValueKey('budget-save'),
-                  onPressed: _busy || _category == null ? null : _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: _busy
-                      ? const SizedBox(width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text('Save',
-                          style: GoogleFonts.spaceGrotesk(
-                            fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white)),
-                ),
-              ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              key: const ValueKey('budget-save'),
+              onPressed: _busy || _category == null ? null : _save,
+              style: NxButtonStyle.solid(nx),
+              child: _busy
+                  ? SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: nx.onButton))
+                  : const Text('Save'),
             ),
             if (widget.editing) ...[
               const SizedBox(height: 6),
@@ -497,7 +506,7 @@ class _BudgetEditSheetState extends State<BudgetEditSheet> {
                 key: const ValueKey('budget-remove'),
                 onPressed: _busy ? null : _remove,
                 child: Text('Remove budget',
-                  style: GoogleFonts.dmSans(fontSize: 14, color: AppColors.alert)),
+                  style: NxType.body(14, color: nx.danger, weight: FontWeight.w700)),
               ),
             ],
           ],

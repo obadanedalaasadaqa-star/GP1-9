@@ -6,8 +6,8 @@ import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/comparison_labels.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/money.dart';
-import '../core/theme_provider.dart';
 import '../screens/verify_email_screen.dart';
 import 'charts/bar_list.dart';
 import 'charts/column_chart.dart';
@@ -120,13 +120,12 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isDark = context.watch<ThemeProvider>().isDark;
-    final c = _C(isDark);
+    final c = _C(Nx.of(context).dark);
     final report = _report;
 
     return RefreshIndicator(
-      color: AppColors.gold,
-      backgroundColor: c.surface,
+      color: AppColors.ink,
+      backgroundColor: AppColors.lime,
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -141,22 +140,26 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
                   label: Text(p == ReportPeriod.custom ? 'Custom…' : p.label),
                   selected: _request.period == p,
                   onSelected: (_) => _choose(p),
-                  selectedColor: AppColors.gold.withValues(alpha: 0.2),
+                  selectedColor: c.dark ? AppColors.lime : AppColors.ink,
                   backgroundColor: c.surface,
-                  side: BorderSide(color: _request.period == p ? AppColors.gold : c.border),
-                  labelStyle: GoogleFonts.dmSans(
-                    fontSize: 12.5, fontWeight: FontWeight.w600,
-                    color: _request.period == p ? AppColors.gold : c.primary),
+                  side: BorderSide(
+                    color: _request.period == p
+                        ? (c.dark ? AppColors.lime : AppColors.ink) : c.border,
+                    width: 2),
+                  shape: const StadiumBorder(),
+                  labelStyle: NxType.body(13.5, weight: FontWeight.w700,
+                    color: _request.period == p
+                        ? (c.dark ? AppColors.ink : Colors.white) : c.primary),
                   showCheckmark: false,
                 ),
             ],
           ),
           const SizedBox(height: 16),
           if (_loading)
-            const Padding(
-              padding: EdgeInsets.only(top: 40),
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
               child: Center(child: SizedBox(width: 22, height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold))),
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: c.primary))),
             )
           else if (report == null)
             _errorBox(c)
@@ -170,15 +173,15 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
   Widget _errorBox(_C c) => Padding(
     padding: const EdgeInsets.only(top: 24),
     child: Column(children: [
-      Text("Couldn't load the report.", style: GoogleFonts.dmSans(fontSize: 14, color: c.primary)),
+      Text("Couldn't load the report.", style: GoogleFonts.instrumentSans(fontSize: 14, color: c.primary)),
       if (_error != null) ...[
         const SizedBox(height: 6),
-        Text(_error!, textAlign: TextAlign.center, style: GoogleFonts.dmSans(fontSize: 12.5, color: c.muted)),
+        Text(_error!, textAlign: TextAlign.center, style: GoogleFonts.instrumentSans(fontSize: 12.5, color: c.muted)),
       ],
       const SizedBox(height: 8),
       TextButton(
         onPressed: _load,
-        style: TextButton.styleFrom(foregroundColor: AppColors.gold),
+        style: TextButton.styleFrom(foregroundColor: c.primary),
         child: const Text('Try again'),
       ),
     ]),
@@ -197,9 +200,9 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
       ],
       // 1. Range
       Text(r.range.label,
-        style: GoogleFonts.spaceGrotesk(fontSize: 20, fontWeight: FontWeight.w800, color: c.primary)),
+        style: NxType.display(26, color: c.primary, letterSpacing: -0.8)),
       const SizedBox(height: 2),
-      Text(reportComparedWith(r.range, r.previous), style: GoogleFonts.dmSans(fontSize: 12.5, color: c.muted)),
+      Text(reportComparedWith(r.range, r.previous), style: GoogleFonts.instrumentSans(fontSize: 12.5, color: c.muted)),
       const SizedBox(height: 16),
 
       // 2. AI summary
@@ -208,16 +211,16 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
 
       if (empty)
         _card(c, child: Text('No receipts in this period.',
-          style: GoogleFonts.dmSans(fontSize: 14, color: c.primary)))
+          style: GoogleFonts.instrumentSans(fontSize: 14, color: c.primary)))
       else ...[
         // 3. Totals (counts up once)
         _card(c, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           CountUpText(r.totals.total, key: ValueKey('total-${_request.cacheKey}'),
-            style: GoogleFonts.spaceGrotesk(fontSize: 32, fontWeight: FontWeight.w800, color: c.primary)),
+            style: NxType.display(40, color: c.primary, letterSpacing: -1.5)),
           const SizedBox(height: 6),
           Text('${r.totals.receipts} receipt${r.totals.receipts == 1 ? '' : 's'} · '
               'average ${formatJd(r.totals.average)} JD',
-            style: GoogleFonts.dmSans(fontSize: 13, color: c.muted)),
+            style: GoogleFonts.instrumentSans(fontSize: 13, color: c.muted)),
         ])),
         const SizedBox(height: 16),
 
@@ -249,7 +252,7 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
               ],
               center: Text(
                 '${r.byCategory.length} ${r.byCategory.length == 1 ? 'category' : 'categories'}',
-                style: GoogleFonts.dmSans(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)),
+                style: GoogleFonts.instrumentSans(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)),
             ),
           ),
           const SizedBox(height: 16),
@@ -258,16 +261,16 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
               Container(width: 10, height: 10,
                 decoration: BoxDecoration(color: CategoryColors.of(cat.category), shape: BoxShape.circle)),
               const SizedBox(width: 10),
-              Expanded(child: Text(cat.category, style: GoogleFonts.dmSans(fontSize: 13.5, color: c.primary))),
-              Text('${formatJd(cat.total)} JD', style: GoogleFonts.dmSans(fontSize: 13.5, color: c.primary)),
+              Expanded(child: Text(cat.category, style: GoogleFonts.instrumentSans(fontSize: 13.5, color: c.primary))),
+              Text('${formatJd(cat.total)} JD', style: GoogleFonts.instrumentSans(fontSize: 13.5, color: c.primary)),
               const SizedBox(width: 10),
               SizedBox(width: 40, child: Text('${cat.sharePercent}%', textAlign: TextAlign.right,
-                style: GoogleFonts.dmSans(fontSize: 12.5, color: c.muted))),
+                style: GoogleFonts.instrumentSans(fontSize: 12.5, color: c.muted))),
             ]),
             Padding(
               padding: const EdgeInsets.only(left: 20, top: 2, bottom: 10),
               child: Text('${cat.receipts} receipt${cat.receipts == 1 ? '' : 's'}',
-                style: GoogleFonts.dmSans(fontSize: 11.5, color: c.muted)),
+                style: GoogleFonts.instrumentSans(fontSize: 11.5, color: c.muted)),
             ),
           ],
         ])),
@@ -315,14 +318,18 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
               : verified ? _email : () => VerifyEmailScreen.open(context),
           icon: _emailing
               ? const SizedBox(width: 16, height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold))
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.mail_outline_rounded),
           label: Text(verified ? 'Email me this report' : 'Verify your email to get reports by email'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.gold,
-            side: BorderSide(color: AppColors.gold.withValues(alpha: 0.5)),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            backgroundColor: c.dark ? AppColors.lime : AppColors.ink,
+            foregroundColor: c.dark ? AppColors.ink : Colors.white,
+            disabledBackgroundColor: (c.dark ? AppColors.lime : AppColors.ink)
+                .withValues(alpha: 0.4),
+            side: BorderSide.none,
+            minimumSize: const Size(0, 54),
+            textStyle: NxType.body(15, weight: FontWeight.w700),
+            shape: const StadiumBorder(),
           ),
         ),
       ),
@@ -330,38 +337,41 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
   }
 
   Widget _aiSummary(ReportAi ai, _C c) {
-    final header = Row(children: [
-      ShaderMask(
-        shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-        child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Colors.white),
-      ),
-      const SizedBox(width: 8),
-      Text('AI summary', style: GoogleFonts.spaceGrotesk(fontSize: 14, fontWeight: FontWeight.w700, color: c.primary)),
-    ]);
+    final header = Text('AI summary', style: NxType.mono(11, color: c.muted, letterSpacing: 1.5));
     final Widget body = switch (ai.status) {
       ReportAiStatus.ready => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(ai.headline, style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w700, color: c.primary)),
+          Text(ai.headline, style: NxType.display(19, color: c.primary,
+            weight: FontWeight.w700, height: 1.25, letterSpacing: -0.3)),
           const SizedBox(height: 8),
-          Text(ai.narrative, style: GoogleFonts.dmSans(fontSize: 13.5, color: c.primary, height: 1.5)),
+          Text(ai.narrative, style: GoogleFonts.instrumentSans(fontSize: 13.5, color: c.primary, height: 1.5)),
           const SizedBox(height: 10),
           for (final tip in ai.tips)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.lightbulb_rounded, color: AppColors.mint, size: 16),
+                Container(
+                  margin: const EdgeInsets.only(top: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: c.dark ? AppColors.lime : AppColors.ink,
+                    borderRadius: BorderRadius.circular(5)),
+                  child: Text('TIP', style: NxType.mono(9.5,
+                    color: c.dark ? AppColors.ink : Colors.white,
+                    weight: FontWeight.w500, letterSpacing: 1)),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: Text(tip, style: GoogleFonts.dmSans(fontSize: 13, color: c.primary, height: 1.45))),
+                Expanded(child: Text(tip, style: GoogleFonts.instrumentSans(fontSize: 13, color: c.primary, height: 1.45))),
               ]),
             ),
           const SizedBox(height: 4),
           Text('AI-generated · numbers calculated by Nexus',
-            style: GoogleFonts.dmSans(fontSize: 11.5, color: c.muted)),
+            style: GoogleFonts.instrumentSans(fontSize: 11.5, color: c.muted)),
         ]),
       ReportAiStatus.notEnoughData => Text(
           'The AI summary appears after ${ai.minReceipts} receipts in this period.',
-          style: GoogleFonts.dmSans(fontSize: 13.5, color: c.muted)),
+          style: GoogleFonts.instrumentSans(fontSize: 13.5, color: c.muted)),
       ReportAiStatus.unavailable => Text(ai.error ?? 'AI summary is not available right now.',
-          style: GoogleFonts.dmSans(fontSize: 13.5, color: c.muted)),
+          style: GoogleFonts.instrumentSans(fontSize: 13.5, color: c.muted)),
     };
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, const SizedBox(height: 12), body]);
   }
@@ -381,32 +391,34 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
     padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
     decoration: BoxDecoration(
       color: c.surface,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: c.border),
+      borderRadius: BorderRadius.circular(18),
+      border: c.dark ? null : Border.all(color: c.border, width: 2),
     ),
     child: child,
   );
 
   Widget _title(String text, _C c) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
-    child: Text(text, style: GoogleFonts.spaceGrotesk(fontSize: 14, fontWeight: FontWeight.w700, color: c.primary)),
+    child: Text(text, style: NxType.display(18, color: c.primary, weight: FontWeight.w700, letterSpacing: -0.3)),
   );
 
   Widget _row(String label, String value, _C c) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(child: Text(label, style: GoogleFonts.dmSans(fontSize: 13.5, color: c.primary))),
+      Expanded(child: Text(label, style: GoogleFonts.instrumentSans(fontSize: 13.5, color: c.primary))),
       const SizedBox(width: 12),
-      Text(value, style: GoogleFonts.dmSans(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.primary)),
+      Text(value, style: NxType.mono(13, weight: FontWeight.w500, color: c.primary)),
     ]),
   );
 }
 
 class _C {
+  final bool dark;
   final Color surface, border, primary, muted;
   _C(bool isDark)
-      : surface = isDark ? AppColors.surface : AppColors.surfaceLight,
-        border = isDark ? AppColors.border : AppColors.borderLight,
+      : dark = isDark,
+        surface = isDark ? AppColors.surface : Colors.white,
+        border = isDark ? AppColors.border : AppColors.ink,
         primary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight,
         muted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
 }

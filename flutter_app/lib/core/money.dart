@@ -12,3 +12,14 @@ String formatJd(double v, {int decimals = 2}) {
   final q = (fils / unit).round();                 // x.5 is exact here, rounds away from 0
   return (q / const [1, 10, 100, 1000][decimals]).toStringAsFixed(decimals);
 }
+
+/// 1240 → "1,240".
+String formatPoints(int n) {
+  final s = n.toString();
+  final b = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+    b.write(s[i]);
+  }
+  return b.toString();
+}

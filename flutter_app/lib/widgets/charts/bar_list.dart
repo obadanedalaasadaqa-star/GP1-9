@@ -75,7 +75,8 @@ class BarList extends StatelessWidget {
                   BarChartRodData(
                     toY: shown[k].value * t,
                     width: shown[k].value2 == null ? 12 : 8,
-                    color: shown[k].color ?? AppColors.gold,
+                    color: shown[k].color ?? (Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.cobaltLight : AppColors.cobalt),
                     borderRadius: BorderRadius.circular(4),
                     backDrawRodData: BackgroundBarChartRodData(
                       show: shown[k].value2 == null, toY: maxY, color: track),
@@ -108,7 +109,7 @@ class BarList extends StatelessWidget {
                 child: column([
                   for (final i in shown)
                     cell(Text(i.label, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.dmSans(fontSize: 12.5, color: textPrimary)),
+                        style: GoogleFonts.instrumentSans(fontSize: 12.5, color: textPrimary)),
                       Alignment.centerLeft),
                 ], CrossAxisAlignment.start),
               ),
@@ -119,7 +120,7 @@ class BarList extends StatelessWidget {
                 column([
                   for (final i in shown)
                     cell(Text(i.valueText,
-                        style: GoogleFonts.dmSans(
+                        style: GoogleFonts.instrumentSans(
                           fontSize: 12.5, fontWeight: FontWeight.w600, color: textPrimary)),
                       Alignment.centerRight),
                 ], CrossAxisAlignment.end),

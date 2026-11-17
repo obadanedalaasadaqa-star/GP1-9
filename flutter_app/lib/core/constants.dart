@@ -15,50 +15,63 @@ class AppConfig {
 }
 
 class AppColors {
-  // Dark palette (LedgerFlow-inspired navy)
-  static const bg = Color(0xFF08111E);
-  static const surface = Color(0xFF111D31);
-  static const border = Color(0xFF1A2940);
+  // Fable "receipt" palette. Names kept from the old theme so every screen
+  // still compiles; the values are the new ones.
+  static const ink      = Color(0xFF17142B);
+  static const paper    = Color(0xFFECE9E1);
+  static const lime     = Color(0xFFD8F34A);
+  static const cobalt   = Color(0xFF2D3BE6);
+  static const coral    = Color(0xFFFF5A3C);
+  static const pink     = Color(0xFFFF8FC7);
+  static const teal     = Color(0xFF19B39A);
+  static const amber    = Color(0xFFFFB627);
+  static const lavender = Color(0xFF6E69B8);
+  static const cobaltSoft  = Color(0xFFDDE0FF); // text on cobalt
+  static const cobaltLight = Color(0xFF8E97FF); // cobalt on ink
+  static const danger   = Color(0xFFC93A1E);    // coral readable as text
+  static const dotted   = Color(0xFFB9B5C9);    // dotted leaders, tracks
 
-  // Accent palette
-  static const blue = Color(0xFF3B82F6);
-  static const blueLight = Color(0xFF60A5FA);
-  static const violet = Color(0xFF8C79FF);
-  static const mint = Color(0xFF63D0C3);
-  static const gold = Color(0xFFD6A046);
-  static const green = Color(0xFF10B981);
-  static const red = Color(0xFFEF4444);
-  static const alert = Color(0xFFF06A63);
+  // Dark mode (ink)
+  static const bg      = ink;
+  static const surface = Color(0xFF262148); // sheets, cards
+  static const border  = Color(0xFF3A3466); // rows, hairlines
+  static const raised  = Color(0xFF3A3466);
 
-  // Text
-  static const textPrimary = Color(0xFFF7F9FC);
-  static const textMuted = Color(0xFFA6B5C6);
-  static const textDim = Color(0xFFCBD5E1);
+  // Accents (old names → new roles)
+  static const blue      = cobalt;
+  static const blueLight = cobaltLight;
+  static const violet    = lavender;
+  static const mint      = teal;
+  static const gold      = lime;    // the action / highlight colour
+  static const green     = teal;
+  static const red       = coral;
+  static const alert     = coral;
 
-  // Light mode overrides
-  static const bgLight = Color(0xFFF0F4FA);
-  static const surfaceLight = Color(0xFFFFFFFF);
-  static const borderLight = Color(0xFFDDE5F0);
-  static const textPrimaryLight = Color(0xFF0F1A2E);
-  static const textMutedLight = Color(0xFF64748B);
-  static const textDimLight = Color(0xFF475569);
+  // Text on ink
+  static const textPrimary = Color(0xFFFFFFFF);
+  static const textMuted   = Color(0xFFC9C6DA);
+  static const textDim     = Color(0xFFD5D2E6);
 
-  // Gold → Mint gradient used on the center QR button and key accents
-  static const goldGlow = LinearGradient(
-    colors: [gold, mint],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  // Light mode (paper)
+  static const bgLight          = paper;
+  static const surfaceLight     = Color(0xFFFFFFFF);
+  static const borderLight      = Color(0xFFD5D2E6);
+  static const textPrimaryLight = ink;
+  static const textMutedLight   = Color(0xFF5A5670);
+  static const textDimLight     = Color(0xFF3A3466);
+
+  // Kept for old call sites: a flat lime fill (no gradient in this design).
+  static const goldGlow = LinearGradient(colors: [lime, lime]);
 }
 
 /// Colour for each receipt category, shared by every screen.
 class CategoryColors {
   static const map = {
-    'Supermarket': AppColors.blue,
-    'Food':        AppColors.mint,
-    'Pharmacy':    AppColors.violet,
-    'Clothing':    AppColors.gold,
-    'Electronics': AppColors.blueLight,
+    'Supermarket': AppColors.cobalt,
+    'Food':        AppColors.coral,
+    'Pharmacy':    AppColors.teal,
+    'Clothing':    AppColors.pink,
+    'Electronics': AppColors.amber,
   };
 
   /// Colour for [category], muted for unknown ones.

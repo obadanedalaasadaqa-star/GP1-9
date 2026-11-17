@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/realtime_service.dart';
 import '../core/theme_provider.dart';
 import '../core/user_model.dart';
@@ -58,8 +58,6 @@ class _SecurityCardState extends State<SecurityCard> {
   Widget build(BuildContext context) {
     final user        = context.watch<AuthProvider>().user!;
     final isDark      = context.watch<ThemeProvider>().isDark;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
     final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
     final verified = user.emailVerified;
@@ -67,19 +65,9 @@ class _SecurityCardState extends State<SecurityCard> {
     // Unverified but already on should not happen, but turning off stays possible.
     final enabled = _pending == null && (verified || user.loginTwoFactor);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return NxProfileCard(
         children: [
-          Text('SIGN-IN SECURITY', style: GoogleFonts.spaceGrotesk(
-            fontSize: 10, fontWeight: FontWeight.w700,
-            color: textMuted, letterSpacing: 2)),
+          Text('SIGN-IN SECURITY', style: NxType.label(textMuted)),
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: Row(
@@ -88,13 +76,12 @@ class _SecurityCardState extends State<SecurityCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Two-step sign-in', style: GoogleFonts.dmSans(
-                        fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                      Text('Two-step sign-in', style: NxType.body(15, weight: FontWeight.w700, color: textPrimary)),
                       const SizedBox(height: 2),
                       Text(value
                           ? 'A code is emailed to you at every password login'
                           : 'Ask for an email code when I log in with my password',
-                        style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                        style: NxType.body(12.5, color: textMuted)),
                     ],
                   ),
                 ),
@@ -102,10 +89,6 @@ class _SecurityCardState extends State<SecurityCard> {
                   key: const ValueKey('switch-2fa'),
                   value: value,
                   onChanged: enabled ? (v) => v ? _turnOn() : _turnOff() : null,
-                  activeThumbColor: AppColors.gold,
-                  activeTrackColor: AppColors.gold.withValues(alpha: 0.25),
-                  inactiveThumbColor: textMuted,
-                  inactiveTrackColor: border,
                 ),
               ],
             ),
@@ -117,18 +100,16 @@ class _SecurityCardState extends State<SecurityCard> {
                 children: [
                   Expanded(
                     child: Text('Verify your email to turn this on',
-                      style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                      style: NxType.body(12.5, color: textMuted)),
                   ),
                   TextButton(
                     onPressed: () => VerifyEmailScreen.open(context),
-                    child: Text('Verify', style: GoogleFonts.dmSans(
-                      fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gold)),
+                    child: Text('Verify', style: NxType.body(13.5, weight: FontWeight.w700, color: Nx.of(context).accent)),
                   ),
                 ],
               ),
             ),
         ],
-      ),
     );
   }
 }
@@ -182,7 +163,7 @@ class _TurnOffDialogState extends State<_TurnOffDialog> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 10),
-          Text(_error!, style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.alert)),
+          Text(_error!, style: NxType.body(13, color: AppColors.coral)),
         ],
       ],
     ),
@@ -193,7 +174,7 @@ class _TurnOffDialogState extends State<_TurnOffDialog> {
       TextButton(
         key: const ValueKey('2fa-turn-off'),
         onPressed: _busy ? null : _submit,
-        child: const Text('Turn off', style: TextStyle(color: AppColors.alert))),
+        child: const Text('Turn off', style: TextStyle(color: AppColors.coral))),
     ],
   );
 }

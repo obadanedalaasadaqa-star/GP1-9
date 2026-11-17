@@ -62,7 +62,8 @@ void main() {
     expect(find.text('4 items'), findsOneWidget);   // 1 + 2 + 1
     final total = tester.widget<Text>(find.byKey(const ValueKey('receipt-total')));
     expect(total.data, '11.00 JD');                 // 10.995 → 11.00
-    expect(find.text('+10 pts earned'), findsOneWidget);
+    expect(find.text('+10'), findsOneWidget);       // the points stamp
+    expect(find.text('POINTS'), findsOneWidget);
     expect(find.textContaining('not saved'), findsNothing);
   });
 
@@ -75,6 +76,6 @@ void main() {
     expect(find.text('Item prices were not saved for this receipt.'), findsOneWidget);
     expect(find.text('Sat, 10 Oct 2026 · 14:05'), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const ValueKey('receipt-total'))).data, '80.00 JD');
-    expect(find.textContaining('pts earned'), findsNothing);
+    expect(find.text('POINTS'), findsNothing);      // no points stamp
   });
 }

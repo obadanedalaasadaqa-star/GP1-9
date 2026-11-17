@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/offline_cache.dart';
 import '../core/theme_provider.dart';
 import '../screens/budgets_screen.dart';
@@ -62,27 +62,16 @@ class _BudgetsAlertsCardState extends State<BudgetsAlertsCard> {
   Widget build(BuildContext context) {
     final user        = context.watch<AuthProvider>().user!;
     final isDark      = context.watch<ThemeProvider>().isDark;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
     final border      = isDark ? AppColors.border  : AppColors.borderLight;
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
     final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
     final verified = user.emailVerified;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return NxProfileCard(
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: Text('BUDGETS & ALERTS', style: GoogleFonts.spaceGrotesk(
-              fontSize: 10, fontWeight: FontWeight.w700,
-              color: textMuted, letterSpacing: 2)),
+            child: Text('BUDGETS & ALERTS', style: NxType.label(textMuted)),
           ),
           InkWell(
             key: const ValueKey('profile-budgets'),
@@ -92,21 +81,19 @@ class _BudgetsAlertsCardState extends State<BudgetsAlertsCard> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Row(
                 children: [
-                  const Icon(Icons.savings_rounded, color: AppColors.gold, size: 20),
+                  const NxIconTile(icon: Icons.savings_outlined, color: AppColors.amber, size: 34),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text('Monthly budgets', style: GoogleFonts.dmSans(
-                      fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    child: Text('Monthly budgets', style: NxType.body(15, weight: FontWeight.w700, color: textPrimary)),
                   ),
                   if (_budgetCount != null)
-                    Text('$_budgetCount set', style: GoogleFonts.dmSans(
-                      fontSize: 13, color: textMuted)),
+                    Text('$_budgetCount set', style: NxType.mono(12.5, color: textMuted)),
                   Icon(Icons.chevron_right_rounded, color: textMuted),
                 ],
               ),
             ),
           ),
-          Divider(height: 1, color: AppColors.border.withValues(alpha: 0.4)),
+          const NxRowDivider(),
           _switchRow(
             key: const ValueKey('switch-budget-alerts'),
             title: 'Budget alert emails',
@@ -130,18 +117,16 @@ class _BudgetsAlertsCardState extends State<BudgetsAlertsCard> {
                 children: [
                   Expanded(
                     child: Text('Verify your email to get these emails',
-                      style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                      style: NxType.body(12.5, color: textMuted)),
                   ),
                   TextButton(
                     onPressed: () => VerifyEmailScreen.open(context),
-                    child: Text('Verify', style: GoogleFonts.dmSans(
-                      fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gold)),
+                    child: Text('Verify', style: NxType.body(13.5, weight: FontWeight.w700, color: Nx.of(context).accent)),
                   ),
                 ],
               ),
             ),
         ],
-      ),
     );
   }
 
@@ -164,10 +149,9 @@ class _BudgetsAlertsCardState extends State<BudgetsAlertsCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: GoogleFonts.dmSans(
-                  fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                Text(title, style: NxType.body(15, weight: FontWeight.w700, color: textPrimary)),
                 const SizedBox(height: 2),
-                Text(subtitle, style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                Text(subtitle, style: NxType.body(12.5, color: textMuted)),
               ],
             ),
           ),
@@ -175,10 +159,6 @@ class _BudgetsAlertsCardState extends State<BudgetsAlertsCard> {
             key: key,
             value: value,
             onChanged: enabled ? onChanged : null,
-            activeThumbColor: AppColors.gold,
-            activeTrackColor: AppColors.gold.withValues(alpha: 0.25),
-            inactiveThumbColor: textMuted,
-            inactiveTrackColor: border,
           ),
         ],
       ),

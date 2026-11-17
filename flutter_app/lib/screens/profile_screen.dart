@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
+import '../core/money.dart';
 import '../core/realtime_service.dart';
 import '../core/theme_provider.dart';
 import '../core/user_model.dart';
@@ -199,12 +201,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
     final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
     final textDim     = isDark ? AppColors.textDim     : AppColors.textDimLight;
+    final nx          = Nx.of(context);
 
     final initials = user.name.isNotEmpty
         ? user.name.trim().split(' ').map((w) => w[0].toUpperCase()).take(2).join()
         : '?';
 
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: Theme.of(context).brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Scaffold(
       backgroundColor: bg,
       body: SafeArea(
         child: SingleChildScrollView(
@@ -213,48 +219,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Profile',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 28, fontWeight: FontWeight.w800,
-                  color: textPrimary, letterSpacing: -0.5)),
-              const SizedBox(height: 4),
-              Text('Manage your Nexus account.',
-                style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
-              const SizedBox(height: 28),
+                style: NxType.display(40, color: textPrimary, letterSpacing: -1.8)),
+              const SizedBox(height: 18),
 
-              // Avatar + name hero
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 80, height: 80,
-                      decoration: BoxDecoration(
-                        gradient: AppColors.goldGlow,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.gold.withValues(alpha: 0.4),
-                            blurRadius: 24, spreadRadius: 2),
+              // Member card
+              Padding(
+                padding: const EdgeInsets.only(right: 6, bottom: 6),
+                child: NxCard(
+                  tilt: 2,
+                  color: AppColors.cobalt,
+                  borderColor: AppColors.ink,
+                  shadowColor: isDark ? AppColors.lime : AppColors.ink,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('NEXUS', style: NxType.display(18,
+                            color: Colors.white, letterSpacing: 1)),
+                          const Spacer(),
+                          Text('MEMBER SINCE ${_formatDate(user.createdAt).toUpperCase()}',
+                            style: NxType.mono(10.5, color: AppColors.cobaltSoft,
+                              letterSpacing: 1)),
                         ],
                       ),
-                      alignment: Alignment.center,
-                      child: Text(initials,
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 26, fontWeight: FontWeight.w800,
-                          color: Colors.white)),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(user.name,
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 18, fontWeight: FontWeight.w700,
-                        color: textPrimary)),
-                    const SizedBox(height: 2),
-                    Text(user.email,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 13, color: textMuted)),
-                  ],
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Container(
+                            width: 56, height: 56,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.lime,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.ink, width: 2)),
+                            child: Text(initials,
+                              style: NxType.display(19, color: AppColors.ink,
+                                letterSpacing: 0)),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(user.name,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: NxType.display(22, color: Colors.white)),
+                                Text(user.email,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: NxType.body(13.5, color: AppColors.cobaltSoft)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      DashedRule(color: Colors.white.withValues(alpha: 0.8),
+                        thickness: 1.5),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(user.serialNumber,
+                              style: NxType.mono(13, color: Colors.white,
+                                weight: FontWeight.w500)),
+                          ),
+                          Text('${formatPoints(user.loyaltyPoints)} pts',
+                            style: NxType.display(20, color: AppColors.lime)),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 22),
 
               // Appearance card (theme toggle)
               _card(
@@ -267,23 +306,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Dark Mode',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 14, fontWeight: FontWeight.w500,
+                          Text('Dark mode',
+                            style: NxType.body(15, weight: FontWeight.w700,
                               color: textPrimary)),
                           const SizedBox(height: 2),
-                          Text(isDark ? 'On — deep navy theme' : 'Off — light theme',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 12, color: textMuted)),
+                          Text(isDark ? 'On, ink theme' : 'Off, paper theme',
+                            style: NxType.body(12.5, color: textMuted)),
                         ],
                       ),
                       Switch(
                         value: isDark,
                         onChanged: (_) => theme.toggle(),
-                        activeThumbColor: AppColors.gold,
-                        activeTrackColor: AppColors.gold.withValues(alpha: 0.25),
-                        inactiveThumbColor: textMuted,
-                        inactiveTrackColor: border,
                       ),
                     ],
                   ),
@@ -307,18 +340,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _row('Email', user.email,
                     textMuted: textMuted, textPrimary: textPrimary, border: border),
                   _emailStatusRow(user.emailVerified, textMuted: textMuted),
-                  _row('Serial Number', user.serialNumber,
+                  _row('Serial number', user.serialNumber,
                     textMuted: textMuted, textPrimary: textPrimary, border: border,
-                    valueStyle: GoogleFonts.spaceGrotesk(
-                      fontSize: 13, color: AppColors.gold,
-                      letterSpacing: 1.5,
-                      fontFeatures: [const FontFeature.tabularFigures()])),
-                  _row('Loyalty Points', '${user.loyaltyPoints} pts',
+                    valueStyle: NxType.mono(13, color: textPrimary,
+                      weight: FontWeight.w500)),
+                  _row('Loyalty points', '${formatPoints(user.loyaltyPoints)} pts',
                     textMuted: textMuted, textPrimary: textPrimary, border: border,
-                    valueStyle: GoogleFonts.spaceGrotesk(
-                      fontSize: 14, color: AppColors.mint,
-                      fontWeight: FontWeight.w700)),
-                  _row('Member Since', _formatDate(user.createdAt),
+                    valueStyle: NxType.mono(13.5, color: textPrimary,
+                      weight: FontWeight.w500)),
+                  _row('Member since', _formatDate(user.createdAt),
                     textMuted: textMuted, textPrimary: textPrimary, border: border,
                     last: true),
                 ],
@@ -474,17 +504,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => context.read<AuthProvider>().logout(),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(
-                      color: AppColors.alert.withValues(alpha: 0.4)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                    foregroundColor: AppColors.alert,
-                  ),
-                  child: Text('Sign Out',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontWeight: FontWeight.w700, fontSize: 14)),
+                  style: NxButtonStyle.outline(nx, color: nx.danger),
+                  child: const Text('Sign Out'),
                 ),
               ),
               const SizedBox(height: 6),
@@ -493,15 +514,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   key: const ValueKey('logout-all'),
                   onPressed: _logoutAll,
                   child: Text('Sign out of all devices',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13, fontWeight: FontWeight.w600,
-                      color: AppColors.alert)),
+                    style: NxType.body(13.5, weight: FontWeight.w700,
+                      color: nx.danger)),
                 ),
               ),
             ],
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -509,16 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required Color surface,
     required Color border,
     required List<Widget> children,
-  }) =>
-    Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
-    );
+  }) => NxProfileCard(children: children);
 
   Widget _emailStatusRow(bool verified, {required Color textMuted}) => Column(children: [
     Padding(
@@ -526,45 +538,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Email Status', style: GoogleFonts.dmSans(
-            fontSize: 13, color: textMuted)),
+          Text('Email status', style: NxType.body(14.5,
+            weight: FontWeight.w700, color: Nx.of(context).text)),
           verified
-              ? _chip(Icons.verified_rounded, 'Verified', AppColors.mint)
+              ? _chip(Icons.check_rounded, 'Verified', AppColors.teal)
               : GestureDetector(
                   onTap: () => VerifyEmailScreen.open(context),
                   child: _chip(Icons.error_outline_rounded,
-                    'Not verified · Verify', AppColors.gold),
+                    'Not verified · Verify', AppColors.amber),
                 ),
         ],
       ),
     ),
-    Divider(height: 1, color: AppColors.border.withValues(alpha: 0.4)),
+    const NxRowDivider(),
   ]);
 
   Widget _chip(IconData icon, String label, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
+      color: color,
       borderRadius: BorderRadius.circular(20),
     ),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 14, color: color),
+      Icon(icon, size: 14, color: AppColors.ink),
       const SizedBox(width: 5),
-      Text(label, style: GoogleFonts.dmSans(
-        fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+      Text(label, style: NxType.body(12.5,
+        weight: FontWeight.w700, color: AppColors.ink)),
     ]),
   );
 
   Widget _statusBanner(String status, String msg) {
-    final color = status == 'success' ? AppColors.mint : AppColors.alert;
+    final color = status == 'success' ? AppColors.teal : AppColors.coral;
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        border: Border.all(color: AppColors.ink, width: 2),
       ),
-      child: Text(msg, style: GoogleFonts.dmSans(fontSize: 13, color: color)),
+      child: Text(msg, style: NxType.body(13.5,
+        weight: FontWeight.w600, color: AppColors.ink)),
     );
   }
 
@@ -572,42 +586,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String label, {
     required bool loading,
     required VoidCallback onPressed,
-  }) =>
-    SizedBox(
-      width: double.infinity, height: 48,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: AppColors.goldGlow,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.gold.withValues(alpha: 0.25),
-              blurRadius: 14, offset: const Offset(0, 5)),
-          ],
-        ),
-        child: ElevatedButton(
-          onPressed: loading ? null : onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12))),
-          child: loading
-              ? const SizedBox(width: 18, height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white))
-              : Text(label,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14, color: Colors.white)),
-        ),
+  }) {
+    final nx = Nx.of(context);
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: loading ? null : onPressed,
+        style: NxButtonStyle.solid(nx, height: 50),
+        child: loading
+            ? SizedBox(width: 18, height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5, color: nx.onButton))
+            : Text(label),
       ),
     );
+  }
 
   Widget _fieldLabel(String text, Color color) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
-    child: Text(text, style: GoogleFonts.dmSans(
-      fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+    child: Text(text.toUpperCase(), style: NxType.label(Nx.of(context).muted)),
   );
 
   Widget _input(
@@ -627,38 +624,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       obscureText: obscure,
       keyboardType: keyboard,
       validator: validator,
-      style: GoogleFonts.dmSans(color: textPrimary, fontSize: 15),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.dmSans(color: textMuted),
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: isDark
-            ? Colors.white.withValues(alpha: 0.04)
-            : Colors.black.withValues(alpha: 0.03),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: border)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.gold.withValues(alpha: 0.6))),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.alert.withValues(alpha: 0.5))),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.alert.withValues(alpha: 0.7))),
-      ),
+      style: NxType.body(15.5, color: textPrimary),
+      decoration: nxInput(Nx.of(context), hint: hint, suffix: suffix),
     );
 
   Widget _sectionTitle(String t, Color textMuted) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
-    child: Text(t, style: GoogleFonts.spaceGrotesk(
-      fontSize: 10, fontWeight: FontWeight.w700,
-      color: textMuted, letterSpacing: 2)),
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(t, style: NxType.label(textMuted)),
   );
 
   Widget _row(
@@ -675,15 +647,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: GoogleFonts.dmSans(
-              fontSize: 13, color: textMuted)),
-            Text(value, style: valueStyle ?? GoogleFonts.dmSans(
-              fontSize: 14, color: textPrimary, fontWeight: FontWeight.w500)),
+            Text(label, style: NxType.body(14.5,
+              weight: FontWeight.w700, color: textPrimary)),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(value,
+                textAlign: TextAlign.right,
+                overflow: TextOverflow.ellipsis,
+                style: valueStyle ?? NxType.mono(13, color: textPrimary)),
+            ),
           ],
         ),
       ),
-      if (!last) Divider(height: 1,
-        color: AppColors.border.withValues(alpha: 0.4)),
+      if (!last) const NxRowDivider(),
     ]);
 
   String _formatDate(DateTime d) {

@@ -1,13 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 import '../core/budget_models.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/money.dart';
 import '../core/receipt_model.dart';
-import '../core/theme_provider.dart';
 import 'budget_alert.dart';
 
 /// Bottom sheet shown when a store sends the user a receipt (live, via the socket).
@@ -45,98 +43,118 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = context.watch<ThemeProvider>().isDark;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
-    final textMuted   = isDark ? AppColors.textMuted : AppColors.textMutedLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
+    final nx = Nx.of(context);
+    const ink = AppColors.ink;
+    const muted = AppColors.textMutedLight;
 
     final r = widget.receipt;
-    final catColor = CategoryColors.map[r.category] ?? AppColors.gold;
+    final catColor = CategoryColors.map[r.category] ?? AppColors.lime;
     final shown = r.items.take(NewReceiptSheet.maxItems).toList();
     final more = r.items.length - shown.length;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      padding: const EdgeInsets.fromLTRB(28, 16, 28, 24),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: border),
-      ),
+    return NxSheet(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: textMuted.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 20),
-          ShaderMask(
-            shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-            child: Text('NEW RECEIPT',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 11, fontWeight: FontWeight.w700,
-                color: Colors.white, letterSpacing: 2.5)),
-          ),
-          const SizedBox(height: 16),
-
-          // Store + category
-          Text(r.storeName,
+          Text('NEW RECEIPT',
             textAlign: TextAlign.center,
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 20, fontWeight: FontWeight.w700, color: textPrimary)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: catColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(99)),
-            child: Text(r.category,
-              style: GoogleFonts.dmSans(
-                fontSize: 11, fontWeight: FontWeight.w700, color: catColor)),
-          ),
-          const SizedBox(height: 18),
+            style: NxType.label(nx.muted)),
+          const SizedBox(height: 14),
 
-          // Total + points
-          Text('${formatJd(r.totalAmount)} JD',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 40, fontWeight: FontWeight.w800,
-              color: textPrimary, letterSpacing: -1)),
-          const SizedBox(height: 4),
-          Text('+${widget.pointsEarned} pts',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.mint)),
-          const SizedBox(height: 18),
-
-          // Items
-          if (shown.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: border)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          // The receipt, printed on a slip
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 12, 8),
+            child: Transform.rotate(
+              angle: -0.017,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  for (final item in shown)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text(item,
-                        style: GoogleFonts.dmSans(fontSize: 13, color: textPrimary)),
+                  Container(
+                    decoration: BoxDecoration(boxShadow: [
+                      BoxShadow(color: nx.shadow, offset: const Offset(5, 6)),
+                    ]),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const ReceiptEdge(color: Colors.white, up: true),
+                        Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  NxIconTile(icon: categoryIcon(r.category),
+                                    color: catColor, size: 40),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(r.storeName,
+                                          style: NxType.display(20, color: ink,
+                                            height: 1.1)),
+                                        const SizedBox(height: 2),
+                                        Text(r.category,
+                                          style: NxType.mono(11.5, color: muted,
+                                            letterSpacing: 0.5)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (shown.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                const DashedRule(color: ink),
+                                const SizedBox(height: 10),
+                                for (final item in shown)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Text(item,
+                                      style: NxType.mono(13, color: ink)),
+                                  ),
+                                if (more > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text('and $more more',
+                                      style: NxType.mono(11.5, color: muted)),
+                                  ),
+                              ],
+                              const SizedBox(height: 10),
+                              const DashedRule(color: ink),
+                              const SizedBox(height: 10),
+                              Text('${formatJd(r.totalAmount)} JD',
+                                style: NxType.display(38, color: ink,
+                                  letterSpacing: -1.5, height: 1)),
+                            ],
+                          ),
+                        ),
+                        const ReceiptEdge(color: Colors.white),
+                      ],
                     ),
-                  if (more > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('and $more more',
-                        style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                  ),
+                  Positioned(
+                    right: -6, bottom: 22,
+                    child: Transform.rotate(
+                      angle: -0.2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.lime,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: ink, width: 2.5)),
+                        child: Text('+${widget.pointsEarned} pts',
+                          style: NxType.display(17, color: ink)),
+                      ),
                     ),
+                  ),
                 ],
               ),
             ),
-          const SizedBox(height: 20),
+          ),
+          const SizedBox(height: 16),
 
           // Budget alerts for this receipt
           if (widget.alerts != null)
@@ -148,38 +166,21 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
                     BudgetAlertBanner(alert: a),
                     const SizedBox(height: 12),
                   ],
-                  if (alerts.isNotEmpty) const SizedBox(height: 4),
                 ],
               ),
             ),
 
           // Buttons
-          SizedBox(
-            width: double.infinity, height: 50,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: AppColors.goldGlow,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: ElevatedButton(
-                onPressed: widget.onViewArchive,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14))),
-                child: Text('View in Archive',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15, color: Colors.white)),
-              ),
-            ),
+          ElevatedButton(
+            onPressed: widget.onViewArchive,
+            style: NxButtonStyle.solid(nx),
+            child: const Text('View in Archive'),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           TextButton(
             onPressed: widget.onDone,
             child: Text('Done',
-              style: GoogleFonts.dmSans(fontSize: 14, color: textMuted)),
+              style: NxType.body(15, color: nx.text, weight: FontWeight.w700)),
           ),
         ],
       ),

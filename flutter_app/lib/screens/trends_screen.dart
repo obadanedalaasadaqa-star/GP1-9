@@ -1,16 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/budget_models.dart';
 import '../core/comparison_labels.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/money.dart';
 import '../core/offline_cache.dart';
 import '../core/realtime_service.dart';
 import '../core/stats_model.dart';
-import '../core/theme_provider.dart';
 import '../core/trends.dart';
 import '../widgets/budget_bar.dart';
 import '../widgets/offline_banner.dart';
@@ -166,87 +166,70 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = context.watch<ThemeProvider>().isDark;
-    final bg          = isDark ? AppColors.bg      : AppColors.bgLight;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
-    final stats       = _stats;
+    final nx    = Nx.of(context);
+    final stats = _stats;
 
-    return Scaffold(
-      backgroundColor: bg,
+    // Trends is an ink page in both modes; its cards follow the mode.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+      backgroundColor: AppColors.ink,
       body: SafeArea(
+        bottom: false,
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeader(textPrimary)),
+            SliverToBoxAdapter(child: _buildHeader()),
             if (_loading)
               SliverToBoxAdapter(child: _buildLoading())
             else if (_error != null || stats == null)
-              SliverToBoxAdapter(child: _buildError(textPrimary, textMuted))
+              SliverToBoxAdapter(child: _buildError(nx))
             else if (!stats.hasAnyReceipts)
-              SliverToBoxAdapter(child: _buildEmpty(textPrimary, textMuted))
+              SliverToBoxAdapter(child: _buildEmpty())
             else
-              SliverToBoxAdapter(
-                child: _buildContent(stats, surface, border, textPrimary, textMuted)),
+              SliverToBoxAdapter(child: _buildContent(stats, nx)),
           ],
         ),
       ),
+    ),
     );
   }
 
-  // ── Header: title, refresh, offline banner ─────────────────────────────────
+  // ── Header: title, AI, refresh, offline banner ─────────────────────────────
 
-  Widget _buildHeader(Color textPrimary) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+  Widget _roundIcon(IconData icon, VoidCallback onTap, {bool filled = false}) =>
+      Pressable(
+        onTap: onTap,
+        child: Container(
+          width: 42, height: 42,
+          decoration: BoxDecoration(
+            color: filled ? AppColors.lime : Colors.transparent,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: filled ? AppColors.lime : Colors.white, width: 2)),
+          child: Icon(icon, size: 20,
+            color: filled ? AppColors.ink : Colors.white),
+        ),
+      );
+
+  Widget _buildHeader() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Trends',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 28, fontWeight: FontWeight.w800,
-                color: textPrimary, letterSpacing: -0.5)),
-            Row(
-              children: [
-                // AI page
-                Tooltip(
-                  message: 'AI insights',
-                  child: GestureDetector(
-                    onTap: () => AiScreen.open(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.gold.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.gold.withValues(alpha: 0.3)),
-                      ),
-                      child: const Icon(Icons.auto_awesome_rounded,
-                        color: AppColors.gold, size: 18),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Refresh button
-                GestureDetector(
-                  onTap: _load,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.gold.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: AppColors.gold.withValues(alpha: 0.3)),
-                    ),
-                    child: const Icon(Icons.refresh_rounded,
-                      color: AppColors.gold, size: 18),
-                  ),
-                ),
-              ],
+            Expanded(
+              child: Text('Trends',
+                style: NxType.display(40, color: Colors.white,
+                  letterSpacing: -1.8)),
             ),
+            Tooltip(
+              message: 'AI insights',
+              child: _roundIcon(Icons.auto_awesome_rounded,
+                () => AiScreen.open(context), filled: true),
+            ),
+            const SizedBox(width: 8),
+            _roundIcon(Icons.refresh_rounded, _load),
           ],
         ),
         if (!_loading && _error == null && _offline) ...[
@@ -264,37 +247,31 @@ class _TrendsScreenState extends State<TrendsScreen> {
     child: Center(
       child: SizedBox(width: 22, height: 22,
         child: CircularProgressIndicator(
-          strokeWidth: 2, color: AppColors.gold)),
+          strokeWidth: 2.5, color: AppColors.lime)),
     ),
   );
 
   // ── Error ──────────────────────────────────────────────────────────────────
 
-  Widget _buildError(Color textPrimary, Color textMuted) => Padding(
+  Widget _buildError(Nx nx) => Padding(
     padding: const EdgeInsets.fromLTRB(32, 40, 32, 32),
     child: Column(
       children: [
-        const Icon(Icons.wifi_off_rounded, color: AppColors.alert, size: 40),
+        const Icon(Icons.wifi_off_rounded, color: AppColors.coral, size: 40),
         const SizedBox(height: 16),
         Text('Could not load trends',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 16, fontWeight: FontWeight.w700, color: textPrimary)),
+          style: NxType.display(20, color: Colors.white)),
         const SizedBox(height: 8),
         Text(_error ?? '', textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+          style: NxType.body(13, color: AppColors.textMuted)),
         const SizedBox(height: 24),
-        GestureDetector(
-          onTap: _load,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: AppColors.goldGlow,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text('Retry',
-              style: GoogleFonts.spaceGrotesk(
-                fontWeight: FontWeight.w700, color: Colors.white)),
-          ),
+        ElevatedButton(
+          onPressed: _load,
+          style: NxButtonStyle.solid(nx, fill: AppColors.lime,
+            text: AppColors.ink, height: 48),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Text('Retry')),
         ),
       ],
     ),
@@ -302,69 +279,70 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   // ── Empty state ────────────────────────────────────────────────────────────
 
-  Widget _buildEmpty(Color textPrimary, Color textMuted) => Padding(
+  Widget _buildEmpty() => Padding(
     padding: const EdgeInsets.fromLTRB(32, 40, 32, 32),
     child: Column(
       children: [
-        ShaderMask(
-          shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-          child: const Icon(Icons.insights_rounded,
-            size: 48, color: Colors.white),
-        ),
-        const SizedBox(height: 16),
+        const NxIconTile(icon: Icons.bar_chart_rounded,
+          color: AppColors.lime, size: 64, tilt: -6),
+        const SizedBox(height: 18),
         Text('No spending yet',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 18, fontWeight: FontWeight.w700, color: textPrimary)),
+          style: NxType.display(20, color: Colors.white)),
         const SizedBox(height: 8),
         Text('Your trends appear after your first Nexus receipt.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(fontSize: 13, color: textMuted, height: 1.6)),
+          style: NxType.body(13.5, color: AppColors.textMuted, height: 1.6)),
       ],
     ),
   );
 
-  // ── Main content: 4 cards ──────────────────────────────────────────────────
+  // ── Main content ───────────────────────────────────────────────────────────
 
-  /// Spending up is red, down is mint (less spending is good); "—"/"0%" muted.
-  static Color _changeColor(String change, Color textMuted) {
-    if (change == '—' || change == '0%') return textMuted;
-    return change.startsWith('−') ? AppColors.mint : AppColors.alert;
+  /// Spending up is coral, down is teal (less spending is good); "—"/"0%" muted.
+  static Color _changeColor(String change, Nx nx) {
+    if (change == '—' || change == '0%') return nx.muted;
+    return change.startsWith('−') ? AppColors.teal : nx.danger;
   }
 
-  Widget _chip(String change, Color textMuted, {String? suffix}) {
-    final color = _changeColor(change, textMuted);
+  Widget _chip(String change, Nx nx, {String? suffix}) {
+    final color = _changeColor(change, nx);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(suffix == null ? change : '$change $suffix',
-        style: GoogleFonts.dmSans(
-          fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
+        style: NxType.body(12, weight: FontWeight.w700, color: color)),
     );
   }
 
-  Widget _card(Color surface, Color border, {required Widget child}) => Container(
+  Widget _card(Nx nx, {required Widget child}) => Container(
     width: double.infinity,
-    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+    padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
     decoration: BoxDecoration(
-      color: surface,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: border),
+      color: nx.card,
+      borderRadius: BorderRadius.circular(18),
+      border: nx.dark ? null : Border.all(color: AppColors.ink, width: 2),
     ),
     child: child,
   );
 
-  Widget _cardTitle(String text, Color textPrimary) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Text(text,
-      style: GoogleFonts.spaceGrotesk(
-        fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+  Widget _sectionTitle(String text, {Widget? trailing}) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Text(text,
+            style: NxType.display(22, color: Colors.white, letterSpacing: -0.5)),
+        ),
+        ?trailing,
+      ],
+    ),
   );
 
-  Widget _buildContent(SpendingStats stats, Color surface, Color border,
-      Color textPrimary, Color textMuted) {
+  Widget _buildContent(SpendingStats stats, Nx nx) {
     final current  = stats.current;
     final previous = stats.previous;
     final now      = DateTime.now();
@@ -376,119 +354,131 @@ class _TrendsScreenState extends State<TrendsScreen> {
         ? null
         : trendsVsLabel(
             previousMonth: _monthsLong[previous.from.month - 1], monthInProgress: isNow);
+    final change = previous == null
+        ? null : formatChange(percentChange(current.total, previous.total));
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 140),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 1. This month
-          _card(surface, border, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Text(label.toUpperCase(),
+            style: NxType.label(AppColors.textMuted)),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(label.toUpperCase(),
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 11, fontWeight: FontWeight.w700,
-                  color: textMuted, letterSpacing: 2)),
-              const SizedBox(height: 10),
-              Text('${formatJd(current.total)} JD',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 34, fontWeight: FontWeight.w800,
-                  color: textPrimary, letterSpacing: -0.5)),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10, runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (previous != null)
-                    _chip(formatChange(percentChange(current.total, previous.total)),
-                      textMuted, suffix: vs),
-                  Text('${current.count} receipt${current.count == 1 ? '' : 's'}',
-                    style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
-                ],
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text.rich(TextSpan(children: [
+                    TextSpan(text: formatJd(current.total),
+                      style: NxType.display(64, color: Colors.white,
+                        letterSpacing: -2.5, height: 1)),
+                    TextSpan(text: ' JD',
+                      style: NxType.display(22, color: AppColors.lime,
+                        weight: FontWeight.w700, letterSpacing: 0)),
+                  ])),
+                ),
               ),
             ],
-          )),
-          const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10, runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (change != null)
+                Transform.rotate(
+                  angle: -0.05,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: change.startsWith('−') || change == '0%' || change == '—'
+                          ? AppColors.lime : AppColors.coral,
+                      borderRadius: BorderRadius.circular(16)),
+                    child: Text('$change $vs',
+                      style: NxType.body(12.5, color: AppColors.ink,
+                        weight: FontWeight.w700)),
+                  ),
+                ),
+              Text('${current.count} receipt${current.count == 1 ? '' : 's'}',
+                style: NxType.mono(12.5, color: AppColors.textMuted)),
+            ],
+          ),
+          const SizedBox(height: 22),
+
+          // 2. Last 6 months
+          _MonthChart(periods: stats.periods, months: _months),
+          const SizedBox(height: 26),
 
           // Budgets (only for the current month)
           if (isNow) ...[
             if (_budgets != null)
-              _buildBudgets(_budgets!, surface, border, textPrimary, textMuted)
+              _buildBudgets(_budgets!, nx)
             else if (_budgetsLoading)
-              _buildBudgetsLoading(surface, border, textPrimary)
+              _buildBudgetsLoading(nx)
             else
-              _buildBudgetsRetry(surface, border, textPrimary),
-            const SizedBox(height: 16),
+              _buildBudgetsRetry(nx),
+            const SizedBox(height: 22),
           ],
 
-          // 2. Last 6 months
-          _card(surface, border, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _cardTitle('Last ${stats.periods.length} months', textPrimary),
-              _MonthChart(periods: stats.periods, months: _months, textMuted: textMuted),
-            ],
-          )),
-          const SizedBox(height: 16),
-
           // 3. By category
-          _card(surface, border, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          _sectionTitle('By category'),
+          if (isNow && previous != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                '${_monthsLong[current.from.month - 1]} so far '
+                '${trendsVsLabel(previousMonth: _monthsLong[previous.from.month - 1], monthInProgress: true)}',
+                style: NxType.mono(11.5, color: AppColors.textMuted)),
+            ),
+          _card(nx, child: Column(
             children: [
-              if (isNow && previous != null) ...[
-                Text('By category',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    '${_monthsLong[current.from.month - 1]} so far '
-                    '${trendsVsLabel(previousMonth: _monthsLong[previous.from.month - 1], monthInProgress: true)}',
-                    style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
-                ),
-              ] else
-                _cardTitle('By category', textPrimary),
-              for (final c in categoryChanges(current, previous))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 10, height: 10,
-                        decoration: BoxDecoration(
-                          color: CategoryColors.of(c.category),
-                          shape: BoxShape.circle)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(c.category,
-                          style: GoogleFonts.dmSans(
-                            fontSize: 14, fontWeight: FontWeight.w600,
-                            color: textPrimary)),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('${formatJd(c.current)} JD',
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 14, fontWeight: FontWeight.w700,
-                              color: textPrimary)),
-                          if (previous != null)
-                            Text('${formatJd(c.previous)} JD',
-                              style: GoogleFonts.dmSans(fontSize: 11, color: textMuted)),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 64,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: _chip(formatChange(c.pct), textMuted)),
-                      ),
-                    ],
+              for (final (i, c) in categoryChanges(current, previous).indexed) ...[
+                if (i > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: DashedRule(color: nx.hairline, thickness: 1.5, dash: 3, gap: 3),
                   ),
+                Row(
+                  children: [
+                    Container(
+                      width: 12, height: 12,
+                      decoration: BoxDecoration(
+                        color: CategoryColors.of(c.category),
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(color: nx.line, width: 1.5)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(c.category,
+                        style: NxType.body(14.5, weight: FontWeight.w700,
+                          color: nx.text)),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${formatJd(c.current)} JD',
+                          style: NxType.mono(13.5, color: nx.text,
+                            weight: FontWeight.w500)),
+                        if (previous != null)
+                          Text('${formatJd(c.previous)} JD',
+                            style: NxType.mono(11, color: nx.muted)),
+                      ],
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 64,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _chip(formatChange(c.pct), nx)),
+                    ),
+                  ],
                 ),
+              ],
             ],
           )),
           const SizedBox(height: 16),
@@ -498,37 +488,33 @@ class _TrendsScreenState extends State<TrendsScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _card(surface, border, child: Column(
+                Expanded(child: _card(nx, child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _tileTitle('Biggest store', textMuted),
+                    _tileTitle('Biggest store', nx),
                     Text(current.topStore?.storeName ?? '—',
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 17, fontWeight: FontWeight.w800,
-                        color: textPrimary)),
+                      style: NxType.display(18, color: nx.text)),
                     const SizedBox(height: 6),
                     Text(
                       current.topStore == null
                           ? 'No receipts this month'
                           : '${formatJd(current.topStore!.total)} JD · '
                             '${current.topStore!.count} visit${current.topStore!.count == 1 ? '' : 's'}',
-                      style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
+                      style: NxType.mono(11.5, color: nx.muted)),
                   ],
                 ))),
                 const SizedBox(width: 12),
-                Expanded(child: _card(surface, border, child: Column(
+                Expanded(child: _card(nx, child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _tileTitle('Average receipt', textMuted),
+                    _tileTitle('Average receipt', nx),
                     Text('${formatJd(current.average)} JD',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 17, fontWeight: FontWeight.w800,
-                        color: textPrimary)),
+                      style: NxType.display(18, color: nx.text)),
                     const SizedBox(height: 8),
                     if (previous != null)
                       _chip(formatChange(percentChange(current.average, previous.average)),
-                        textMuted, suffix: 'vs last month'),
+                        nx, suffix: 'vs last month'),
                   ],
                 ))),
               ],
@@ -539,116 +525,117 @@ class _TrendsScreenState extends State<TrendsScreen> {
     );
   }
 
-  Widget _buildBudgets(BudgetList list, Color surface, Color border,
-      Color textPrimary, Color textMuted) {
+  Widget _buildBudgets(BudgetList list, Nx nx) {
     final edit = GestureDetector(
       key: const ValueKey('trends-budgets-edit'),
       onTap: _openBudgets,
       child: Text(list.budgets.isEmpty ? 'Set up' : 'Edit',
-        style: GoogleFonts.dmSans(
-          fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gold)),
+        style: NxType.body(14, weight: FontWeight.w700, color: AppColors.lime)
+          .copyWith(decoration: TextDecoration.underline,
+            decorationColor: AppColors.lime)),
     );
     final savedLine = Padding(
-      padding: const EdgeInsets.only(top: 2),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Text('Saved on this phone',
-        style: GoogleFonts.dmSans(fontSize: 11.5, color: textMuted)),
+        style: NxType.mono(11.5, color: AppColors.textMuted)),
     );
     if (list.budgets.isEmpty) {
-      return _card(surface, border, child: Column(
+      return _card(nx, child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.savings_rounded, color: AppColors.gold, size: 20),
+              const NxIconTile(icon: Icons.savings_outlined,
+                color: AppColors.amber, size: 38),
               const SizedBox(width: 12),
               Expanded(
                 child: Text('Set monthly budgets',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
+                  style: NxType.display(16, color: nx.text,
+                    weight: FontWeight.w700)),
               ),
-              edit,
+              GestureDetector(
+                key: const ValueKey('trends-budgets-edit'),
+                onTap: _openBudgets,
+                child: Text('Set up',
+                  style: NxType.body(14, weight: FontWeight.w700,
+                    color: nx.accent).copyWith(
+                      decoration: TextDecoration.underline,
+                      decorationColor: nx.accent)),
+              ),
             ],
           ),
-          if (_budgetsSavedAt != null) savedLine,
+          if (_budgetsSavedAt != null) ...[
+            const SizedBox(height: 6),
+            Text('Saved on this phone',
+              style: NxType.mono(11.5, color: nx.muted)),
+          ],
         ],
       ));
     }
-    return _card(surface, border, child: Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Budgets',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
-            edit,
-          ],
-        ),
+        _sectionTitle('Budgets', trailing: edit),
         if (_budgetsSavedAt != null) savedLine,
-        const SizedBox(height: 8),
-        for (final b in list.budgets) BudgetBar(status: b),
+        for (final b in list.budgets)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _card(nx, child: BudgetBar(status: b)),
+          ),
       ],
-    ));
+    );
   }
 
-  /// Same height as a card with two budget bars, so nothing jumps.
-  Widget _buildBudgetsLoading(Color surface, Color border, Color textPrimary) {
+  /// Same height as two budget cards, so nothing jumps.
+  Widget _buildBudgetsLoading(Nx nx) {
     Widget track() => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Column(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: _card(nx, child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(width: 90, height: 10,
+          Container(width: 90, height: 12,
             decoration: BoxDecoration(
-              color: border, borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 8),
-          Container(height: 8,
+              color: nx.hairline, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 10),
+          Container(height: 18,
             decoration: BoxDecoration(
-              color: border, borderRadius: BorderRadius.circular(4))),
-        ],
-      ),
-    );
-    return KeyedSubtree(
-      key: const ValueKey('trends-budgets-loading'),
-      child: _card(surface, border, child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Budgets',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
-          const SizedBox(height: 8),
-          track(),
-          track(),
+              color: nx.hairline, borderRadius: BorderRadius.circular(9))),
         ],
       )),
     );
+    return KeyedSubtree(
+      key: const ValueKey('trends-budgets-loading'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('Budgets'),
+          track(),
+          track(),
+        ],
+      ),
+    );
   }
 
-  Widget _buildBudgetsRetry(Color surface, Color border, Color textPrimary) =>
+  Widget _buildBudgetsRetry(Nx nx) =>
       GestureDetector(
         key: const ValueKey('trends-budgets-retry'),
         behavior: HitTestBehavior.opaque,
         onTap: () => _loadBudgets(),
-        child: _card(surface, border, child: Row(
+        child: _card(nx, child: Row(
           children: [
-            const Icon(Icons.refresh_rounded, color: AppColors.alert, size: 20),
+            Icon(Icons.refresh_rounded, color: nx.danger, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text("Couldn't load budgets, tap to retry",
-                style: GoogleFonts.dmSans(
-                  fontSize: 13.5, fontWeight: FontWeight.w600, color: textPrimary)),
+                style: NxType.body(13.5, weight: FontWeight.w600, color: nx.text)),
             ),
           ],
         )),
       );
 
-  Widget _tileTitle(String text, Color textMuted) => Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: Text(text.toUpperCase(),
-      style: GoogleFonts.spaceGrotesk(
-        fontSize: 10, fontWeight: FontWeight.w700,
-        color: textMuted, letterSpacing: 1.5)),
+  Widget _tileTitle(String text, Nx nx) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(text.toUpperCase(), style: NxType.label(nx.muted)),
   );
 }
 
@@ -657,57 +644,72 @@ class _TrendsScreenState extends State<TrendsScreen> {
 class _MonthChart extends StatelessWidget {
   final List<PeriodStats> periods;
   final List<String> months;
-  final Color textMuted;
 
-  const _MonthChart({
-    required this.periods,
-    required this.months,
-    required this.textMuted,
-  });
+  const _MonthChart({required this.periods, required this.months});
 
   @override
   Widget build(BuildContext context) {
-    const chartHeight = 120.0;
+    const chartHeight = 130.0;
     final maxAmt = periods.fold<double>(0, (m, p) => p.total > m ? p.total : m);
 
-    return SizedBox(
-      height: chartHeight + 36,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < periods.length; i++)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 5),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(formatJd(periods[i].total, decimals: 0),
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 9, fontWeight: FontWeight.w700,
-                        color: i == periods.length - 1 ? AppColors.gold : textMuted)),
-                    const SizedBox(height: 4),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 600),
-                      curve: Curves.easeOut,
-                      height: maxAmt == 0 ? 0 : chartHeight * periods[i].total / maxAmt,
-                      decoration: BoxDecoration(
-                        gradient: i == periods.length - 1 ? AppColors.goldGlow : null,
-                        color: i == periods.length - 1
-                            ? null : AppColors.gold.withValues(alpha: 0.3),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(6)),
-                      ),
+    return Column(
+      children: [
+        SizedBox(
+          height: chartHeight + 22,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var i = 0; i < periods.length; i++)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(formatJd(periods[i].total, decimals: 0),
+                          style: NxType.mono(11,
+                            weight: FontWeight.w500,
+                            color: i == periods.length - 1
+                                ? AppColors.lime : Colors.white)),
+                        const SizedBox(height: 6),
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: maxAmt == 0
+                              ? 0 : periods[i].total / maxAmt),
+                          duration: Duration(milliseconds: 500 + i * 70),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, f, _) => Container(
+                            height: chartHeight * f,
+                            decoration: BoxDecoration(
+                              color: i == periods.length - 1
+                                  ? AppColors.lime : AppColors.lavender,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(months[periods[i].from.month - 1],
-                      style: GoogleFonts.dmSans(fontSize: 9, color: textMuted)),
-                  ],
+                  ),
                 ),
+            ],
+          ),
+        ),
+        Container(height: 2, color: Colors.white),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (var i = 0; i < periods.length; i++)
+              Expanded(
+                child: Text(months[periods[i].from.month - 1],
+                  textAlign: TextAlign.center,
+                  style: NxType.mono(11,
+                    weight: i == periods.length - 1 ? FontWeight.w500 : FontWeight.w400,
+                    color: i == periods.length - 1
+                        ? AppColors.lime : AppColors.textMuted)),
               ),
-            ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }

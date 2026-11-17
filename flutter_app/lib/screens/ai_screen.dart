@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/ai_chat_session.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/realtime_service.dart';
-import '../core/theme_provider.dart';
 import '../widgets/ai_chat_view.dart';
 import '../widgets/insight_card.dart';
 import '../widgets/report_view.dart';
@@ -99,57 +99,69 @@ class _AiScreenState extends State<AiScreen> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.watch<ThemeProvider>().isDark;
+    final nx = Nx.of(context);
     final chat = context.watch<AiChatSession>();
-    final bg = isDark ? AppColors.bg : AppColors.bgLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
+    final pageBg = nx.dark ? AppColors.ink : AppColors.pink;
+    final onPage = nx.dark ? Colors.white : AppColors.ink;
     final onAsk = AiScreen.tabs[_tabs.index] == AiTab.ask;
 
-    return PopScope(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: Theme.of(context).brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: PopScope(
       // Runs for the back button, the iOS swipe-back and Android back alike.
       onPopInvokedWithResult: (_, _) => _hideKeyboard(),
       child: Scaffold(
-        backgroundColor: bg,
+        backgroundColor: pageBg,
         resizeToAvoidBottomInset: true,
         body: SafeArea(
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 12, 12, 4),
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
                 child: Row(children: [
-                  IconButton(
-                    tooltip: 'Back',
-                    icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
-                  const SizedBox(width: 4),
+                  const NxBackButton(),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text('AI insights',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 24, fontWeight: FontWeight.w800, color: textPrimary, letterSpacing: -0.5)),
+                      style: NxType.display(30, color: onPage, letterSpacing: -1.2)),
                   ),
                   if (onAsk && chat.messages.isNotEmpty)
                     IconButton(
                       tooltip: 'New chat',
-                      icon: const Icon(Icons.refresh_rounded, color: AppColors.gold),
+                      icon: Icon(Icons.refresh_rounded, color: onPage),
                       onPressed: chat.sending ? null : chat.clear,
                     ),
-                  ShaderMask(
-                    shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-                    child: const Icon(Icons.auto_awesome_rounded, size: 24, color: Colors.white),
-                  ),
-                  const SizedBox(width: 8),
                 ]),
               ),
-              TabBar(
-                controller: _tabs,
-                indicatorColor: AppColors.gold,
-                labelColor: AppColors.gold,
-                unselectedLabelColor: textMuted,
-                labelStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w700),
-                unselectedLabelStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w500),
-                tabs: [for (final t in AiScreen.tabs) Tab(text: _label(t))],
+              // Pill tabs
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: nx.dark ? AppColors.surface : Colors.white,
+                    borderRadius: BorderRadius.circular(23),
+                    border: Border.all(color: nx.dark ? AppColors.border : AppColors.ink, width: 2),
+                  ),
+                  child: TabBar(
+                    controller: _tabs,
+                    indicator: BoxDecoration(
+                      color: nx.dark ? AppColors.lime : AppColors.ink,
+                      borderRadius: BorderRadius.circular(19),
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    labelColor: nx.dark ? AppColors.ink : Colors.white,
+                    unselectedLabelColor: nx.text,
+                    labelStyle: NxType.body(14, weight: FontWeight.w700),
+                    unselectedLabelStyle: NxType.body(14, weight: FontWeight.w600),
+                    splashFactory: NoSplash.splashFactory,
+                    overlayColor: WidgetStateProperty.all(Colors.transparent),
+                    tabs: [for (final t in AiScreen.tabs) Tab(text: _label(t))],
+                  ),
+                ),
               ),
               Expanded(
                 child: TabBarView(
@@ -172,6 +184,7 @@ class _AiScreenState extends State<AiScreen> with SingleTickerProviderStateMixin
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -200,72 +213,69 @@ class _InsightTabState extends State<_InsightTab> with AutomaticKeepAliveClientM
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isDark = context.watch<ThemeProvider>().isDark;
-    final surface = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border = isDark ? AppColors.border : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
+    final nx = Nx.of(context);
+    final onPage = nx.dark ? Colors.white : AppColors.ink;
 
     return RefreshIndicator(
-      color: AppColors.gold,
-      backgroundColor: surface,
+      color: AppColors.ink,
+      backgroundColor: AppColors.lime,
       onRefresh: () => widget.insightKey.currentState?.reload() ?? Future<void>.value(),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InsightCard(key: widget.insightKey),
-            const SizedBox(height: 24),
-            Text('TRY ASKING',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 11, fontWeight: FontWeight.w700, color: textMuted, letterSpacing: 2)),
+            const SizedBox(height: 22),
+            Text('TRY ASKING', style: NxType.label(onPage)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 for (final s in AiScreen.suggestions)
-                  ActionChip(
-                    label: Text(s, style: GoogleFonts.dmSans(fontSize: 12.5, color: textPrimary)),
-                    onPressed: () => widget.onSuggest(s),
-                    backgroundColor: surface,
-                    side: BorderSide(color: border),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  Pressable(
+                    onTap: () => widget.onSuggest(s),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: nx.dark ? AppColors.surface : Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: nx.dark ? AppColors.border : AppColors.ink, width: 2),
+                      ),
+                      child: Text(s, style: NxType.body(14, color: nx.text,
+                        weight: FontWeight.w700)),
+                    ),
                   ),
               ],
             ),
             if (widget.onReport != null) ...[
-              const SizedBox(height: 24),
-              Material(
-                color: surface,
-                borderRadius: BorderRadius.circular(18),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: widget.onReport,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: border),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.summarize_rounded, color: AppColors.gold),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Create a report',
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 14, fontWeight: FontWeight.w700, color: textPrimary)),
-                          const SizedBox(height: 2),
-                          Text('1, 3, 6 or 12 months, or your own dates. Email it to yourself.',
-                            style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
-                        ]),
-                      ),
-                      Icon(Icons.chevron_right_rounded, color: textMuted),
-                    ]),
+              const SizedBox(height: 22),
+              Pressable(
+                onTap: widget.onReport,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: nx.dark ? AppColors.cobalt : AppColors.ink,
+                    borderRadius: BorderRadius.circular(18),
                   ),
+                  child: Row(children: [
+                    const NxIconTile(icon: Icons.description_outlined,
+                      color: AppColors.lime, size: 46, tilt: -4),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Create a report',
+                          style: NxType.display(18, color: Colors.white,
+                            weight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text('1, 3, 6 or 12 months, or your own dates. Email it to yourself.',
+                          style: NxType.body(12.5, color: AppColors.textMuted)),
+                      ]),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                  ]),
                 ),
               ),
             ],

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/ai_chat_session.dart';
 import '../core/ai_models.dart';
 import '../core/constants.dart';
-import '../core/theme_provider.dart';
+import '../core/design.dart';
 import 'charts/chat_chart_view.dart';
 
 /// Cuts the text to [max] code points (runes), the unit the server counts,
@@ -87,11 +86,13 @@ class _AiChatViewState extends State<AiChatView> {
   @override
   Widget build(BuildContext context) {
     final chat = context.watch<AiChatSession>();
-    final isDark = context.watch<ThemeProvider>().isDark;
-    final surface = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border = isDark ? AppColors.border : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
+    final nx = Nx.of(context);
+    // Cards on the page (white on pink, raised on ink) and text on the page.
+    final surface = nx.dark ? AppColors.surface : Colors.white;
+    final border = nx.dark ? AppColors.border : AppColors.ink;
+    final textPrimary = nx.text;
+    final textMuted = nx.muted;
+    final onPage = nx.dark ? AppColors.textMuted : AppColors.ink;
 
     final messages = chat.messages;
     final count = messages.length + (chat.sending ? 1 : 0);
@@ -108,7 +109,7 @@ class _AiChatViewState extends State<AiChatView> {
       children: [
         Expanded(
           child: messages.isEmpty && !chat.sending
-              ? _empty(textPrimary, textMuted, surface, border)
+              ? _empty(nx.dark ? Colors.white : AppColors.ink, onPage, surface, border)
               : ListView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -124,53 +125,69 @@ class _AiChatViewState extends State<AiChatView> {
                         ),
                 ),
         ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, 10),
-          decoration: BoxDecoration(
-            color: surface,
-            border: Border(top: BorderSide(color: border)),
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
           child: SafeArea(
             top: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: widget.controller,
-                        minLines: 1,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(chat),
-                        inputFormatters: const [RuneLimitFormatter(AiChatView.maxQuestion)],
-                        style: GoogleFonts.dmSans(fontSize: 14.5, color: textPrimary),
-                        decoration: InputDecoration(
-                          hintText: 'Ask about your spending…',
-                          hintStyle: GoogleFonts.dmSans(fontSize: 14, color: textMuted),
-                          border: InputBorder.none,
-                          isDense: true,
-                          counterText: runes >= 450 ? '$runes/${AiChatView.maxQuestion}' : null,
-                          counterStyle: GoogleFonts.dmSans(fontSize: 11, color: textMuted),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(18, 4, 6, 4),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: border, width: 2),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: TextField(
+                            controller: widget.controller,
+                            minLines: 1,
+                            maxLines: 4,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(chat),
+                            inputFormatters: const [RuneLimitFormatter(AiChatView.maxQuestion)],
+                            style: NxType.body(15, color: textPrimary),
+                            decoration: InputDecoration(
+                              hintText: 'Ask about your spending…',
+                              hintStyle: NxType.body(15, color: textMuted,
+                                weight: FontWeight.w400),
+                              border: InputBorder.none,
+                              isDense: true,
+                              counterText: runes >= 450 ? '$runes/${AiChatView.maxQuestion}' : null,
+                              counterStyle: NxType.mono(11, color: textMuted),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      tooltip: 'Send',
-                      onPressed: canSend ? () => _send(chat) : null,
-                      icon: Icon(Icons.send_rounded,
-                        color: canSend ? AppColors.gold : textMuted.withValues(alpha: 0.5)),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: IconButton(
+                          tooltip: 'Send',
+                          onPressed: canSend ? () => _send(chat) : null,
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.cobalt,
+                            disabledBackgroundColor: AppColors.cobalt.withValues(alpha: 0.35),
+                            fixedSize: const Size(44, 44),
+                          ),
+                          icon: const Icon(Icons.arrow_upward_rounded,
+                            color: Colors.white, size: 22),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   "Answers use your Nexus receipts. Don't type personal details."
                   '${left != null && left <= 5 ? ' · $left question${left == 1 ? '' : 's'} left today' : ''}',
-                  style: GoogleFonts.dmSans(fontSize: 11, color: textMuted),
+                  style: NxType.body(11.5, color: onPage),
                 ),
               ],
             ),
@@ -184,23 +201,29 @@ class _AiChatViewState extends State<AiChatView> {
     padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
     children: [
       Text('Ask about your spending',
-        style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.w700, color: textPrimary)),
+        style: NxType.display(26, color: textPrimary, letterSpacing: -0.8)),
       const SizedBox(height: 6),
       Text('Answers come from your own receipts in Nexus.',
-        style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+        style: NxType.body(14, color: textMuted)),
       const SizedBox(height: 18),
       Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
           for (final q in AiChatView.examples)
-            ActionChip(
-              label: Text(q, style: GoogleFonts.dmSans(fontSize: 12.5, color: textPrimary)),
-              backgroundColor: surface,
-              side: BorderSide(color: border),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              onPressed: () => widget.controller.value = TextEditingValue(
+            Pressable(
+              onTap: () => widget.controller.value = TextEditingValue(
                 text: q, selection: TextSelection.collapsed(offset: q.length)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: border, width: 2),
+                ),
+                child: Text(q, style: NxType.body(14,
+                  color: Nx.of(context).text, weight: FontWeight.w700)),
+              ),
             ),
         ],
       ),
@@ -223,19 +246,24 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
+    final dark = Nx.of(context).dark;
     final Color bg;
     final Color edge;
+    final Color fg;
     if (isUser) {
-      bg = AppColors.gold.withValues(alpha: 0.16);
-      edge = AppColors.gold.withValues(alpha: 0.35);
+      bg = dark ? AppColors.lime : AppColors.ink;
+      edge = bg;
+      fg = dark ? AppColors.ink : Colors.white;
     } else if (message.isError) {
-      bg = AppColors.alert.withValues(alpha: 0.10);
-      edge = AppColors.alert.withValues(alpha: 0.35);
+      bg = AppColors.coral;
+      edge = AppColors.ink;
+      fg = AppColors.ink;
     } else {
       bg = surface;
       edge = border;
+      fg = textPrimary;
     }
-    final style = GoogleFonts.dmSans(fontSize: 14, color: textPrimary, height: 1.45);
+    final style = NxType.body(14.5, color: fg, height: 1.45);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -247,12 +275,12 @@ class _Bubble extends StatelessWidget {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(isUser ? 16 : 4),
-              bottomRight: Radius.circular(isUser ? 4 : 16),
+              topLeft: const Radius.circular(18),
+              topRight: const Radius.circular(18),
+              bottomLeft: Radius.circular(isUser ? 18 : 4),
+              bottomRight: Radius.circular(isUser ? 4 : 18),
             ),
-            border: Border.all(color: edge),
+            border: Border.all(color: edge, width: 2),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,7 +295,7 @@ class _Bubble extends StatelessWidget {
                 TextButton(
                   onPressed: onRetry,
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.gold, padding: EdgeInsets.zero,
+                    foregroundColor: AppColors.ink, padding: EdgeInsets.zero,
                     minimumSize: const Size(0, 32), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                   child: const Text('Try again'),
                 ),
@@ -309,8 +337,8 @@ class _TypingIndicatorState extends State<_TypingIndicator> with SingleTickerPro
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: widget.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: widget.border),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: widget.border, width: 2),
           ),
           child: AnimatedBuilder(
             animation: _ctrl,

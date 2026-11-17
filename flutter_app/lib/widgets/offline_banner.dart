@@ -26,17 +26,18 @@ class OfflineBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.gold.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+        color: AppColors.amber,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.ink, width: 2),
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off_rounded, color: AppColors.gold, size: 18),
+          const Icon(Icons.cloud_off_rounded, color: AppColors.ink, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text("You're offline. Showing $what saved on this phone$when.",
-              style: GoogleFonts.dmSans(fontSize: 12.5, color: AppColors.gold, height: 1.35)),
+              style: GoogleFonts.instrumentSans(fontSize: 12.5, fontWeight: FontWeight.w600,
+                color: AppColors.ink, height: 1.35)),
           ),
         ],
       ),

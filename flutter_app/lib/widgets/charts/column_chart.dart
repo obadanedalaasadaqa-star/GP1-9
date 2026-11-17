@@ -9,7 +9,7 @@ import '../../core/theme_provider.dart';
 import 'chart_anim.dart';
 
 /// One column: [topLabel] above it, [label] (short month) below it.
-/// [highlight] (the month in progress) is gold.
+/// [highlight] (the month in progress) is cobalt (lime on ink).
 class ColumnItem {
   final String label;
   final double value;
@@ -49,10 +49,10 @@ class ColumnChart extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(text(i), maxLines: 1,
-                  style: GoogleFonts.dmSans(
+                  style: GoogleFonts.instrumentSans(
                     fontSize: fontSize,
                     fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-                    color: i.highlight ? AppColors.gold : textMuted)),
+                    color: i.highlight ? (Theme.of(context).brightness == Brightness.dark ? AppColors.lime : AppColors.cobalt) : textMuted)),
               ),
             ),
         ],
@@ -84,8 +84,8 @@ class ColumnChart extends StatelessWidget {
                             toY: items[k].value * t,
                             width: math.min(cellWidth * 0.6, 18),
                             color: items[k].highlight
-                                ? AppColors.gold
-                                : AppColors.gold.withValues(alpha: 0.35),
+                                ? (Theme.of(context).brightness == Brightness.dark ? AppColors.lime : AppColors.cobalt)
+                                : AppColors.lavender,
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                           ),
                         ]),

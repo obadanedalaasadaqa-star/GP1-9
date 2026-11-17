@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/login_challenge.dart';
-import '../core/theme_provider.dart';
 
 /// Enter the 6-digit code emailed to the user.
 /// [sendOnOpen]: request a fresh code when the screen opens (false when the
@@ -132,9 +131,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       auth.updateUser(user);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: AppColors.mint,
+        backgroundColor: AppColors.teal,
         content: Text('Email verified ✓',
-          style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w600)),
+          style: NxType.body(14, color: AppColors.ink, weight: FontWeight.w700)),
       ));
       Navigator.of(context).pop();
     } catch (e) {
@@ -152,178 +151,201 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = context.watch<ThemeProvider>().isDark;
+    final nx          = Nx.of(context);
     final login       = widget.login;
     final email       = login?.email ?? context.watch<AuthProvider>().user?.email ?? '';
-    final bg          = isDark ? AppColors.bg      : AppColors.bgLight;
-    final surface     = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border      = isDark ? AppColors.border  : AppColors.borderLight;
-    final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
-    final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
+    final pageBg      = nx.dark ? AppColors.ink : AppColors.teal;
+    final onPage      = nx.dark ? Colors.white : AppColors.ink;
+    const ink         = AppColors.ink;
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            // Email mode: skip for now (verify later from Profile).
-            // Login mode: back to the login form, which keeps what was typed.
-            child: Text(login != null ? 'Cancel' : 'Verify later',
-              style: GoogleFonts.dmSans(
-                color: textMuted, fontSize: 14, fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: Theme.of(context).brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Scaffold(
+      backgroundColor: pageBg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 72, height: 72,
-                decoration: BoxDecoration(
-                  gradient: AppColors.goldGlow,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.gold.withValues(alpha: 0.35),
-                      blurRadius: 24, spreadRadius: 2),
-                  ],
-                ),
-                child: Icon(
-                  login != null ? Icons.lock_outline_rounded : Icons.mark_email_unread_rounded,
-                  color: Colors.white, size: 34),
+              Row(
+                children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: const BoxDecoration(color: ink, shape: BoxShape.circle),
+                    child: Icon(
+                      login != null ? Icons.lock_outline_rounded : Icons.mark_email_unread_outlined,
+                      color: Colors.white, size: 22),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    // Email mode: skip for now (verify later from Profile).
+                    // Login mode: back to the login form, which keeps what was typed.
+                    child: Text(login != null ? 'Cancel' : 'Verify later',
+                      style: NxType.body(15, color: onPage, weight: FontWeight.w700)
+                        .copyWith(decoration: TextDecoration.underline,
+                          decorationColor: onPage)),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
               Text(login != null ? "Confirm it's you" : 'Check your email',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 24, fontWeight: FontWeight.w800, color: textPrimary)),
-              const SizedBox(height: 8),
+                style: NxType.display(44, color: onPage, letterSpacing: -2, height: 1)),
+              const SizedBox(height: 12),
               Text.rich(
                 TextSpan(children: [
                   TextSpan(text: login != null
                       ? 'We sent a sign-in code to\n'
                       : 'We sent a 6-digit code to\n'),
                   TextSpan(text: email,
-                    style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600)),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 ]),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(fontSize: 14, color: textMuted, height: 1.5),
+                style: NxType.body(15, color: onPage, height: 1.45),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 26),
 
-              // Code boxes: one hidden text field drives six display boxes
-              GestureDetector(
-                onTap: () => _focus.requestFocus(),
-                child: Stack(
+              // Code boxes on a slip: one hidden text field drives six boxes
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Transform.rotate(
+                  angle: 0.012,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(boxShadow: [
+                      BoxShadow(color: nx.dark ? AppColors.lime : ink,
+                        offset: const Offset(5, 6)),
+                    ]),
+                    child: Column(
+                      children: [
+                        const ReceiptEdge(color: Colors.white, up: true),
+                        Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('YOUR CODE', style: NxType.label(AppColors.textMutedLight)),
+                              const SizedBox(height: 10),
+                              GestureDetector(
+                                onTap: () => _focus.requestFocus(),
+                                child: Stack(
+                                  children: [
+                                    Opacity(
+                                      opacity: 0,
+                                      child: TextField(
+                                        controller: _codeCtrl,
+                                        focusNode: _focus,
+                                        keyboardType: TextInputType.number,
+                                        autofillHints: const [AutofillHints.oneTimeCode],
+                                        maxLength: _codeLength,
+                                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                        onChanged: (v) {
+                                          setState(() => _error = null);
+                                          if (v.length == _codeLength) _verify();
+                                        },
+                                      ),
+                                    ),
+                                    ListenableBuilder(
+                                      listenable: Listenable.merge([_codeCtrl, _focus]),
+                                      builder: (context, _) => Row(
+                                        children: List.generate(_codeLength, (i) {
+                                          final text = _codeCtrl.text;
+                                          final filled = i < text.length;
+                                          final active = _focus.hasFocus && i == text.length;
+                                          return Expanded(
+                                            child: Container(
+                                              height: 58,
+                                              margin: EdgeInsets.only(right: i < _codeLength - 1 ? 7 : 0),
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                color: filled ? AppColors.lime : Colors.white,
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(
+                                                  width: active ? 3 : 2,
+                                                  color: _error != null
+                                                      ? AppColors.danger
+                                                      : active ? AppColors.cobalt : ink),
+                                              ),
+                                              child: Text(filled ? text[i] : '',
+                                                style: NxType.mono(24, color: ink,
+                                                  weight: FontWeight.w500)),
+                                            ),
+                                          );
+                                        }),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const ReceiptEdge(color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              if (_error != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.coral,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: ink, width: 2)),
+                  child: Text(_error!,
+                    style: NxType.body(13.5, color: ink, weight: FontWeight.w600)),
+                )
+              else if (_info != null)
+                Text(_info!,
+                  style: NxType.body(14, color: onPage, weight: FontWeight.w700)),
+              const SizedBox(height: 26),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _expired
+                      ? () => Navigator.of(context).pop()
+                      : _verifying ? null : _verify,
+                  style: NxButtonStyle.solid(nx,
+                    fill: nx.dark ? AppColors.lime : ink,
+                    text: nx.dark ? ink : Colors.white, height: 56),
+                  child: _verifying
+                      ? SizedBox(width: 20, height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5, color: nx.dark ? ink : Colors.white))
+                      : Text(_expired ? 'Back to login' : login != null ? 'Sign in' : 'Verify Email'),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              Center(
+                child: Column(
                   children: [
-                    Opacity(
-                      opacity: 0,
-                      child: TextField(
-                        controller: _codeCtrl,
-                        focusNode: _focus,
-                        keyboardType: TextInputType.number,
-                        autofillHints: const [AutofillHints.oneTimeCode],
-                        maxLength: _codeLength,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        onChanged: (v) {
-                          setState(() => _error = null);
-                          if (v.length == _codeLength) _verify();
-                        },
-                      ),
+                    if (!_expired) TextButton(
+                      onPressed: (_cooldown > 0 || _sending) ? null : _resend,
+                      child: Text(
+                        _sending
+                            ? 'Sending…'
+                            : _cooldown > 0 ? 'Resend code in ${_cooldown}s' : 'Resend code',
+                        style: NxType.mono(13.5, color: onPage,
+                          weight: (_cooldown > 0 || _sending) ? FontWeight.w400 : FontWeight.w500)),
                     ),
-                    ListenableBuilder(
-                      listenable: Listenable.merge([_codeCtrl, _focus]),
-                      builder: (context, _) => Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: List.generate(_codeLength, (i) {
-                          final text = _codeCtrl.text;
-                          final filled = i < text.length;
-                          final active = _focus.hasFocus && i == text.length;
-                          return Container(
-                            width: 48, height: 58,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                width: active ? 2 : 1,
-                                color: _error != null
-                                    ? AppColors.alert.withValues(alpha: 0.6)
-                                    : active ? AppColors.gold : border),
-                            ),
-                            child: Text(filled ? text[i] : '',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 24, fontWeight: FontWeight.w700,
-                                color: textPrimary)),
-                          );
-                        }),
-                      ),
-                    ),
+                    const SizedBox(height: 2),
+                    Text("Can't find it? Check your spam folder.",
+                      style: NxType.body(12.5, color: onPage)),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-
-              if (_error != null)
-                Text(_error!, textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.alert))
-              else if (_info != null)
-                Text(_info!, textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.mint)),
-              const SizedBox(height: 24),
-
-              SizedBox(
-                width: double.infinity, height: 50,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.goldGlow,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _expired
-                        ? () => Navigator.of(context).pop()
-                        : _verifying ? null : _verify,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14))),
-                    child: _verifying
-                        ? const SizedBox(width: 20, height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                        : Text(_expired ? 'Back to login' : login != null ? 'Sign in' : 'Verify Email',
-                            style: GoogleFonts.spaceGrotesk(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15, color: Colors.white)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              if (!_expired) TextButton(
-                onPressed: (_cooldown > 0 || _sending) ? null : _resend,
-                child: Text(
-                  _sending
-                      ? 'Sending…'
-                      : _cooldown > 0 ? 'Resend code in ${_cooldown}s' : 'Resend code',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14, fontWeight: FontWeight.w600,
-                    color: (_cooldown > 0 || _sending) ? textMuted : AppColors.gold)),
-              ),
-              const SizedBox(height: 4),
-              Text("Can't find it? Check your spam folder.",
-                style: GoogleFonts.dmSans(fontSize: 12, color: textMuted)),
             ],
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -117,7 +117,7 @@ void main() {
     expect(find.bySemanticsLabel('Thinking…'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'Another');
     await tester.pump();
-    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.send_rounded)).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.arrow_upward_rounded)).onPressed, isNull);
 
     reply.complete(http.Response(jsonEncode({'answer': answerText, 'toolsUsed': [], 'remainingToday': 3}), 200));
     await tester.pump();

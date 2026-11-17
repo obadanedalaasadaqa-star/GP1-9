@@ -9,6 +9,7 @@ import 'core/api_client.dart';
 import 'core/auth_provider.dart';
 import 'core/budget_models.dart';
 import 'core/constants.dart';
+import 'core/design.dart';
 import 'core/realtime_service.dart';
 import 'core/receipt_event.dart';
 import 'core/theme_provider.dart';
@@ -46,24 +47,77 @@ class NexusApp extends StatelessWidget {
 
   static ThemeData _buildTheme({required bool dark}) {
     final base = dark ? ThemeData.dark() : ThemeData.light();
+    final text  = dark ? AppColors.textPrimary : AppColors.textPrimaryLight;
+    final muted = dark ? AppColors.textMuted : AppColors.textMutedLight;
+    final card  = dark ? AppColors.surface : Colors.white;
+    final accent = dark ? AppColors.lime : AppColors.cobalt;
     return base.copyWith(
       scaffoldBackgroundColor: dark ? AppColors.bg : AppColors.bgLight,
       colorScheme: dark
           ? const ColorScheme.dark(
               surface: AppColors.surface,
-              primary: AppColors.blue,
-              secondary: AppColors.violet,
-              error: AppColors.red,
+              primary: AppColors.lime,
+              onPrimary: AppColors.ink,
+              secondary: AppColors.cobaltLight,
+              error: AppColors.coral,
             )
           : const ColorScheme.light(
-              surface: AppColors.surfaceLight,
-              primary: AppColors.blue,
-              secondary: AppColors.violet,
-              error: AppColors.red,
+              surface: Colors.white,
+              primary: AppColors.cobalt,
+              onPrimary: Colors.white,
+              secondary: AppColors.ink,
+              error: AppColors.danger,
             ),
-      textTheme: GoogleFonts.dmSansTextTheme(base.textTheme).apply(
-        bodyColor: dark ? AppColors.textPrimary : AppColors.textPrimaryLight,
-        displayColor: dark ? AppColors.textPrimary : AppColors.textPrimaryLight,
+      textTheme: GoogleFonts.instrumentSansTextTheme(base.textTheme).apply(
+        bodyColor: text,
+        displayColor: text,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: accent),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: accent,
+        selectionColor: accent.withValues(alpha: 0.3),
+        selectionHandleColor: accent,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(color: dark ? AppColors.border : AppColors.ink, width: 2)),
+        titleTextStyle: GoogleFonts.bricolageGrotesque(
+          fontSize: 20, fontWeight: FontWeight.w800, color: text),
+        contentTextStyle: GoogleFonts.instrumentSans(
+          fontSize: 14, color: muted, height: 1.45),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: dark ? AppColors.lime : AppColors.ink,
+        contentTextStyle: GoogleFonts.instrumentSans(
+          fontSize: 14, fontWeight: FontWeight.w600,
+          color: dark ? AppColors.ink : Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected)
+                ? (dark ? AppColors.ink : AppColors.lime)
+                : (dark ? AppColors.textMuted : AppColors.ink)),
+        trackColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected)
+                ? (dark ? AppColors.lime : AppColors.ink)
+                : (dark ? AppColors.raised : Colors.white)),
+        trackOutlineColor: WidgetStateProperty.resolveWith((s) =>
+            dark ? (s.contains(WidgetState.selected) ? AppColors.lime : AppColors.textMuted)
+                 : AppColors.ink),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: accent,
+          textStyle: GoogleFonts.instrumentSans(
+            fontSize: 14, fontWeight: FontWeight.w700)),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
       ),
     );
   }
@@ -94,14 +148,6 @@ class _SplashScreenState extends State<_SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
-  // Background glow
-  late final Animation<double> _glowOpacity;
-  late final Animation<double> _glowScale;
-
-  // Ripple ring that expands outward
-  late final Animation<double> _rippleScale;
-  late final Animation<double> _rippleOpacity;
-
   // NEXUS wordmark
   late final Animation<double> _logoOpacity;
   late final Animation<double> _logoScale;
@@ -129,10 +175,6 @@ class _SplashScreenState extends State<_SplashScreen>
         CurvedAnimation(parent: _ctrl,
           curve: Interval(start, end, curve: curve));
 
-    _glowOpacity   = Tween(begin: 0.0, end: 1.0).animate(curved(0.00, 0.18, Curves.easeOut));
-    _glowScale     = Tween(begin: 0.1, end: 1.6).animate(curved(0.00, 0.42, Curves.easeOut));
-    _rippleScale   = Tween(begin: 0.6, end: 2.2).animate(curved(0.16, 0.54, Curves.easeOut));
-    _rippleOpacity = Tween(begin: 0.6, end: 0.0).animate(curved(0.16, 0.54, Curves.easeOut));
     _logoOpacity   = Tween(begin: 0.0, end: 1.0).animate(curved(0.20, 0.48, Curves.easeOut));
     _logoScale     = Tween(begin: 0.72, end: 1.0).animate(curved(0.20, 0.52, Curves.easeOut));
     _subtitleOpacity = Tween(begin: 0.0, end: 1.0).animate(curved(0.36, 0.58, Curves.easeOut));
@@ -169,9 +211,7 @@ class _SplashScreenState extends State<_SplashScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = context.watch<ThemeProvider>().isDark;
-    final bg         = isDark ? AppColors.bg      : AppColors.bgLight;
-    final textMuted  = isDark ? AppColors.textMuted : AppColors.textMutedLight;
-    final borderCol  = isDark ? AppColors.border  : AppColors.borderLight;
+    final bg = isDark ? AppColors.ink : AppColors.cobalt;
 
     return Scaffold(
       backgroundColor: bg,
@@ -182,122 +222,72 @@ class _SplashScreenState extends State<_SplashScreen>
             opacity: _exitOpacity.value,
             child: Stack(
               fit: StackFit.expand,
-              alignment: Alignment.center,
               children: [
-
-                // ── Background radial glow ───────────────────────────────
-                Opacity(
-                  opacity: _glowOpacity.value,
-                  child: Transform.scale(
-                    scale: _glowScale.value,
-                    child: Container(
-                      width: 380, height: 380,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            isDark
-                              ? const Color(0x70D6A046)
-                              : const Color(0x50D6A046),
-                            isDark
-                              ? const Color(0x2863D0C3)
-                              : const Color(0x1863D0C3),
-                            Colors.transparent,
-                          ],
-                          stops: const [0.0, 0.45, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Ripple ring ──────────────────────────────────────────
-                Opacity(
-                  opacity: _rippleOpacity.value,
-                  child: Transform.scale(
-                    scale: _rippleScale.value,
-                    child: Container(
-                      width: 200, height: 200,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.gold, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Logo + subtitle ──────────────────────────────────────
+                // ── Wordmark with a points stamp landing on it ───────────
                 Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // NEXUS wordmark
-                    Opacity(
-                      opacity: _logoOpacity.value,
-                      child: Transform.scale(
-                        scale: _logoScale.value,
-                        child: ShaderMask(
-                          shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-                          child: Text('NEXUS',
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 60, fontWeight: FontWeight.w800,
-                              color: Colors.white, letterSpacing: -2.5,
-                              height: 1)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    // Subtitle
-                    SlideTransition(
-                      position: _subtitleSlide,
-                      child: Opacity(
-                        opacity: _subtitleOpacity.value,
-                        child: Text('SMART EXPENSE TRACKING & LOYALTY',
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 9, fontWeight: FontWeight.w600,
-                            color: textMuted, letterSpacing: 3)),
-                      ),
-                    ),
-                  ],
-                ),
-                ), // Center
-
-                // ── Progress bar at bottom ───────────────────────────────
-                Positioned(
-                  bottom: 64,
-                  left: 48,
-                  right: 48,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Track
-                      Container(
-                        height: 2,
-                        decoration: BoxDecoration(
-                          color: borderCol,
-                          borderRadius: BorderRadius.circular(1)),
-                        child: FractionallySizedBox(
-                          widthFactor: _progress.value,
-                          alignment: Alignment.centerLeft,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: AppColors.goldGlow,
-                              borderRadius: BorderRadius.circular(1),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.gold.withValues(alpha: 0.6),
-                                  blurRadius: 6, spreadRadius: 1),
-                              ],
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Opacity(
+                            opacity: _logoOpacity.value,
+                            child: Transform.scale(
+                              scale: _logoScale.value,
+                              child: Text('Nexus',
+                                style: NxType.display(76, color: Colors.white,
+                                  letterSpacing: -4, height: 1)),
                             ),
                           ),
+                          Positioned(
+                            right: -46, top: -18,
+                            child: Opacity(
+                              opacity: _subtitleOpacity.value,
+                              child: Transform.scale(
+                                scale: 1.8 - 0.8 * _subtitleOpacity.value,
+                                child: const NxStamp(
+                                  value: '+12', caption: 'POINTS',
+                                  color: AppColors.ink, fill: AppColors.lime,
+                                  size: 64, tilt: -12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      SlideTransition(
+                        position: _subtitleSlide,
+                        child: Opacity(
+                          opacity: _subtitleOpacity.value,
+                          child: Text('Every receipt, without the paper.',
+                            style: NxType.body(17, color: AppColors.lime,
+                              weight: FontWeight.w700)),
                         ),
                       ),
                     ],
                   ),
                 ),
 
+                // ── Progress: a till slip printing ───────────────────────
+                Positioned(
+                  bottom: 72, left: 64, right: 64,
+                  child: Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(3)),
+                    child: FractionallySizedBox(
+                      widthFactor: _progress.value,
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.lime,
+                          borderRadius: BorderRadius.circular(3)),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           );
@@ -338,66 +328,47 @@ class _Splash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark    = context.watch<ThemeProvider>().isDark;
-    final bg        = isDark ? AppColors.bg : AppColors.bgLight;
-    final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
+    final nx = Nx.of(context);
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: nx.bg,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ShaderMask(
-                shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-                child: Text('NEXUS',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 34, fontWeight: FontWeight.w800,
-                    color: Colors.white, letterSpacing: -1)),
-              ),
+              Text('Nexus',
+                style: NxType.display(44, color: nx.text, letterSpacing: -2)),
               const SizedBox(height: 28),
               if (error == null) ...[
-                const SizedBox(width: 22, height: 22,
+                SizedBox(width: 22, height: 22,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2, color: AppColors.gold)),
+                    strokeWidth: 2.5, color: nx.accent)),
                 if (message != null) ...[
                   const SizedBox(height: 16),
                   Text(message!,
-                    style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+                    style: NxType.mono(12.5, color: nx.muted)),
                 ],
               ] else ...[
                 Text(error!,
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(fontSize: 14, color: textMuted, height: 1.5)),
+                  style: NxType.body(15, color: nx.muted, height: 1.5)),
                 const SizedBox(height: 24),
                 SizedBox(
-                  width: double.infinity, height: 50,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.goldGlow,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: ElevatedButton(
-                      onPressed: onRetry,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14))),
-                      child: Text('Retry',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15, color: Colors.white)),
-                    ),
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: onRetry,
+                    style: NxButtonStyle.solid(nx),
+                    child: const Text('Retry'),
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () => context.read<AuthProvider>().logout(),
                   child: Text('Sign in with a different account',
-                    style: GoogleFonts.dmSans(fontSize: 13, color: textMuted)),
+                    style: NxType.body(13, color: nx.muted,
+                      weight: FontWeight.w600)),
                 ),
               ],
             ],
@@ -464,11 +435,11 @@ class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
     super.dispose();
   }
 
-  static const _screens = [
-    DashboardScreen(),
-    ArchiveScreen(),
-    TrendsScreen(),
-    ProfileScreen(),
+  late final List<Widget> _screens = [
+    DashboardScreen(onOpenArchive: () => setState(() => _index = 1)),
+    const ArchiveScreen(),
+    const TrendsScreen(),
+    const ProfileScreen(),
   ];
 
   void _showQrModal() {
@@ -580,97 +551,178 @@ class _QrSheetState extends State<_QrSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.watch<ThemeProvider>().isDark;
-    final surface = isDark ? AppColors.surface : AppColors.surfaceLight;
-    final border  = isDark ? AppColors.border  : AppColors.borderLight;
-    final textMuted = isDark ? AppColors.textMuted : AppColors.textMutedLight;
+    final user = context.watch<AuthProvider>().user;
+    String cap(String v) => v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+    final name = user == null
+        ? ''
+        : (user.lastName.isEmpty
+            ? cap(user.firstName)
+            : '${cap(user.firstName)} ${user.lastName[0].toUpperCase()}.');
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      padding: const EdgeInsets.fromLTRB(28, 16, 28, 28),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: border),
+      padding: EdgeInsets.fromLTRB(
+          24, 14, 24, 24 + MediaQuery.of(context).padding.bottom),
+      decoration: const BoxDecoration(
+        color: AppColors.lime,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: textMuted.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 20),
-          ShaderMask(
-            shaderCallback: (b) => AppColors.goldGlow.createShader(b),
-            child: Text('CHECKOUT QR',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 11, fontWeight: FontWeight.w700,
-                color: Colors.white, letterSpacing: 2.5)),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.gold.withValues(alpha: 0.35),
-                  blurRadius: 36, spreadRadius: 6),
-              ],
-            ),
-            child: QrImageView(
-              data: widget.qrData,
-              version: QrVersions.auto,
-              size: 200,
-              backgroundColor: Colors.white,
-              errorCorrectionLevel: QrErrorCorrectLevel.H,
-            ),
+          Center(
+            child: Container(
+              width: 44, height: 5,
+              decoration: BoxDecoration(
+                color: AppColors.ink.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(3))),
           ),
           const SizedBox(height: 16),
-
-          // Serial + copy button row
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(widget.serial,
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 16, fontWeight: FontWeight.w600,
-                  color: AppColors.gold, letterSpacing: 2.5)),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: _copy,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _copied
-                        ? AppColors.mint.withValues(alpha: 0.15)
-                        : AppColors.gold.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(
-                      color: _copied
-                          ? AppColors.mint.withValues(alpha: 0.5)
-                          : AppColors.gold.withValues(alpha: 0.35)),
-                  ),
-                  child: Text(
-                    _copied ? '✓ Copied' : 'Copy',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      color: _copied ? AppColors.mint : AppColors.gold)),
-                ),
-              ),
+              NxBackButton(icon: Icons.close_rounded, tooltip: 'Close',
+                onTap: () => Navigator.of(context).maybePop()),
+              const Spacer(),
+              Text('NO PAPER NEEDED',
+                style: NxType.label(AppColors.ink)),
             ],
           ),
-          const SizedBox(height: 4),
-          Text('Present at any Nexus-enabled store',
-            style: GoogleFonts.dmSans(
-              fontSize: 12, color: textMuted)),
+          const SizedBox(height: 16),
+          Text('Show this\nat the till.',
+            style: NxType.display(40, color: AppColors.ink, height: 0.98,
+              letterSpacing: -1.8)),
+          const SizedBox(height: 20),
+
+          // ── The code, printed on a slip ───────────────────────────────
+          Center(
+            child: Transform.rotate(
+              angle: -0.035,
+              child: Container(
+                width: 290,
+                decoration: const BoxDecoration(boxShadow: [
+                  BoxShadow(color: AppColors.ink, offset: Offset(6, 8)),
+                ]),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const ReceiptEdge(color: Colors.white, up: true),
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: QrImageView(
+                              data: widget.qrData,
+                              version: QrVersions.auto,
+                              size: 200,
+                              backgroundColor: Colors.white,
+                              eyeStyle: const QrEyeStyle(
+                                eyeShape: QrEyeShape.square,
+                                color: AppColors.ink),
+                              dataModuleStyle: const QrDataModuleStyle(
+                                dataModuleShape: QrDataModuleShape.square,
+                                color: AppColors.ink),
+                              errorCorrectionLevel: QrErrorCorrectLevel.H,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const DashedRule(color: AppColors.ink),
+                          const SizedBox(height: 10),
+                          Text('MEMBER',
+                            style: NxType.label(AppColors.textMutedLight)),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: NxType.display(17,
+                                    color: AppColors.ink)),
+                              ),
+                              GestureDetector(
+                                onTap: _copy,
+                                child: Text(
+                                  _copied ? 'Copied' : widget.serial,
+                                  style: NxType.mono(12.5,
+                                    color: _copied
+                                        ? AppColors.teal : AppColors.ink,
+                                    weight: FontWeight.w500)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const ReceiptEdge(color: Colors.white),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          Center(
+            child: Pressable(
+              onTap: _copy,
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.ink,
+                  borderRadius: BorderRadius.circular(22)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10, height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.lime, shape: BoxShape.circle)),
+                    const SizedBox(width: 10),
+                    Text(_copied ? 'Code copied' : 'Copy my code',
+                      style: NxType.body(14, color: Colors.white,
+                        weight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _QrStep(n: '01', text: 'Cashier scans your code')),
+              SizedBox(width: 10),
+              Expanded(child: _QrStep(n: '02', text: 'Receipt lands in the app')),
+              SizedBox(width: 10),
+              Expanded(child: _QrStep(n: '03', text: 'Points stamp your card')),
+            ],
+          ),
         ],
       ),
     );
   }
+}
+
+class _QrStep extends StatelessWidget {
+  final String n;
+  final String text;
+  const _QrStep({required this.n, required this.text});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.only(top: 8),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.ink, width: 2))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(n, style: NxType.mono(11, color: AppColors.ink)),
+            const SizedBox(height: 4),
+            Text(text, style: NxType.body(13, color: AppColors.ink,
+              weight: FontWeight.w700, height: 1.2)),
+          ],
+        ),
+      );
 }
