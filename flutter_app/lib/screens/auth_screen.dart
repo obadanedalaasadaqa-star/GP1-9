@@ -96,7 +96,9 @@ class _AuthScreenState extends State<AuthScreen>
             stops: const [0, 0.4, 0.4, 1],
           ),
         ),
-        child: SingleChildScrollView(
+        child: StatusBarStrip(
+          color: hero,
+          child: SingleChildScrollView(
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
@@ -346,6 +348,7 @@ class _AuthScreenState extends State<AuthScreen>
               ),
             ),
           ),
+        ),
         ),
       ),
     ),

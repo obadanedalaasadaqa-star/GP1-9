@@ -519,3 +519,23 @@ class NxRowDivider extends StatelessWidget {
       color: Nx.of(context).dark ? AppColors.border : AppColors.dotted,
       thickness: 1.5, dash: 3, gap: 3);
 }
+
+/// Keeps a strip of [color] behind the status bar, so a page that scrolls
+/// under light status-bar icons never puts them on a light background.
+class StatusBarStrip extends StatelessWidget {
+  final Color color;
+  final Widget child;
+  const StatusBarStrip({super.key, required this.color, required this.child});
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          Positioned.fill(child: child),
+          Positioned(
+            top: 0, left: 0, right: 0,
+            height: MediaQuery.paddingOf(context).top,
+            child: ColoredBox(color: color),
+          ),
+        ],
+      );
+}

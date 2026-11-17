@@ -199,7 +199,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             stops: const [0, 0.5, 0.5, 1],
           ),
         ),
-        child: RefreshIndicator(
+        child: StatusBarStrip(
+          color: hero,
+          child: RefreshIndicator(
           color: AppColors.ink,
           backgroundColor: AppColors.lime,
           onRefresh: _refreshAll,
@@ -465,6 +467,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
+        ),
         ),
       ),
     ),
