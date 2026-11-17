@@ -1,4 +1,5 @@
 const { rateLimit } = require('express-rate-limit');
+const { ipKey } = require('./ipKey');
 
 const MIN = 60 * 1000;
 
@@ -59,6 +60,10 @@ const DEFAULT_LIMITS = {
   // Never on GET.
   budgets:       { windowMs: 10 * MIN, limit: 60, byUser: true,
                    error: 'Too many budget changes. Try again in a few minutes.' },
+  // GET /api/user/receipts (the Archive reloads on each period change and
+  // realtime tick, so this leaves plenty of room).
+  receiptsRead:  { windowMs: 10 * MIN, limit: 120, byUser: true,
+                   error: 'Too many requests. Try again in a few minutes.' },
 };
 
 const passThrough = (_req, _res, next) => next();
@@ -75,8 +80,11 @@ function buildLimiter(name, {
     ...(requestWasSuccessful && { requestWasSuccessful }),
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    ...(byUser && { keyGenerator: (req) => `user:${req.userId}` }),
-    ...(byStore && { keyGenerator: (req) => `store:${req.store.id}` }),
+    // By IP: IPv6 grouped by /64 (lib/ipKey.js), so one phone can't rotate
+    // through its own addresses. IPv4 keys are the plain address.
+    keyGenerator: byUser ? (req) => `user:${req.userId}`
+      : byStore ? (req) => `store:${req.store.id}`
+      : (req) => `ip:${ipKey(req.ip)}`,
     // Always JSON { error } — the app's _parse() only reads the error field.
     handler: (req, res) => {
       console.log(`[rate-limit] ${name} blocked ip=${req.ip} user=${req.userId ?? '-'}` +
@@ -89,7 +97,7 @@ function buildLimiter(name, {
 /**
  * Returns { login, register, sendCode, verifyCode, loginSendCode,
  * loginVerifyCode, security, passwordCheck, storeAuth, storeReceipts, aiInsight, aiChat,
- * aiReport, aiReportEmail, budgets } middlewares.
+ * aiReport, aiReportEmail, budgets, receiptsRead } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.
  */

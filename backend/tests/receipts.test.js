@@ -1,6 +1,8 @@
 jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 
 const request = require('supertest');
+const prisma = require('../src/lib/prisma');
+const { createApp } = require('../src/app');
 const { makeApp, registerUser, cleanup } = require('./helpers');
 
 // Many sequential DB round trips; the default 30 s is too tight on the pooler.
@@ -125,4 +127,64 @@ describe('POST /api/receipts input checks', () => {
     const me = await request(app).get('/api/user/me').set(auth(c.token));
     expect(me.body.loyaltyPoints).toBe(c.user.loyaltyPoints);
   });
+});
+
+// Audit L9-L11: no self-crediting route in production; bounded reads.
+describe('receipt routes after the audit', () => {
+  test('production app (no testRoutes): POST /api/receipts and /seed are 404', async () => {
+    const prod = createApp({ rateLimit: false });
+    const u = await registerUser(app);
+    const one = await request(prod).post('/api/receipts').set(auth(u.token))
+      .send({ storeName: 'X', category: 'Food', totalAmount: 1, items: [] });
+    expect(one.status).toBe(404);
+    expect((await request(prod).post('/api/receipts/seed').set(auth(u.token))).status).toBe(404);
+    expect((await prisma.user.findUnique({ where: { id: u.user.id } })).loyaltyPoints).toBe(0);
+  }, SLOW);
+
+  test('GET /user/receipts rows have exactly the fields the app reads', async () => {
+    const u = await registerUser(app);
+    await request(app).post('/api/receipts/seed').set(auth(u.token));
+    for (const query of [{}, { from: '2000-01-01T00:00:00Z', to: '2100-01-01T00:00:00Z' }]) {
+      const res = await request(app).get('/api/user/receipts').set(auth(u.token)).query(query);
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBeGreaterThan(0);
+      for (const r of res.body) {
+        expect(Object.keys(r).sort()).toEqual(
+          ['category', 'createdAt', 'id', 'items', 'lineItems', 'pointsEarned', 'storeName', 'totalAmount']);
+      }
+    }
+  }, SLOW);
+
+  test('receiptsRead limiter: the 3rd GET gets 429', async () => {
+    const limited = makeApp({ rateLimit: { receiptsRead: { limit: 2 } } });
+    const u = await registerUser(app);
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      for (let i = 0; i < 2; i++) {
+        expect((await request(limited).get('/api/user/receipts').set(auth(u.token))).status).toBe(200);
+      }
+      const blocked = await request(limited).get('/api/user/receipts').set(auth(u.token));
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error).toBe('Too many requests. Try again in a few minutes.');
+    } finally {
+      console.log.mockRestore();
+    }
+  }, SLOW);
+
+  test('a ranged GET returns the newest 500', async () => {
+    const u = await registerUser(app);
+    const start = Date.UTC(2026, 0, 1);
+    await prisma.receipt.createMany({
+      data: Array.from({ length: 501 }, (_, i) => ({
+        userId: u.user.id, storeName: 'S', category: 'Food', totalAmount: 1, items: [],
+        createdAt: new Date(start + i * 60_000),
+      })),
+    });
+    const res = await request(app).get('/api/user/receipts').set(auth(u.token))
+      .query({ from: '2025-12-01T00:00:00Z', to: '2026-02-01T00:00:00Z' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(500);
+    expect(new Date(res.body[0].createdAt).getTime()).toBe(start + 500 * 60_000);
+    expect(new Date(res.body[499].createdAt).getTime()).toBe(start + 60_000);
+  }, SLOW);
 });

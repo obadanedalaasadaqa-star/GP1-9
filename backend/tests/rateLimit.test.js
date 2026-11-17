@@ -254,8 +254,13 @@ describe('passwordCheck limiter', () => {
     for (let i = 0; i < 3; i++) expect((await rename()).status).toBe(200);
     expect((await changePassword(app, u, PASSWORD, 'short')).status).toBe(400);
     expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(401); // 1st counted
-    expect((await changePassword(app, u, PASSWORD, 'Other@2026')).status).toBe(200);
-    expect((await changePassword(app, u, 'Other@2026', PASSWORD)).status).toBe(200);
+    // Each change ends older sessions: continue with the returned token.
+    const first = await changePassword(app, u, PASSWORD, 'Other@2026');
+    expect(first.status).toBe(200);
+    u.token = first.body.token;
+    const second = await changePassword(app, u, 'Other@2026', PASSWORD);
+    expect(second.status).toBe(200);
+    u.token = second.body.token;
     expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(401); // 2nd counted
     expect((await changePassword(app, u, 'Wrong@2026')).status).toBe(429);
   }, SLOW * 2);
@@ -314,5 +319,23 @@ describe('store limiters', () => {
 
     // Same IP, another store: still allowed.
     expect((await sendReceipt(app, shopB.key, serial)).status).toBe(201);
+  }, SLOW);
+});
+
+// Audit L8: IP limiters group IPv6 addresses by /64.
+describe('IPv6 /64 keys', () => {
+  test('register: two addresses of one /64 use up its bucket; another /64 is separate', async () => {
+    const app = createApp({ rateLimit: { register: { limit: 2 } } });
+    const register = (ip) => request(app).post('/api/auth/register').set('X-Forwarded-For', ip)
+      .send({ firstName: 'Test', lastName: 'User', email: uniqueEmail(), password: PASSWORD });
+    for (const ip of ['2001:db8:1:2::a', '2001:db8:1:2::b']) {
+      const res = await register(ip);
+      expect(res.status).toBe(201);
+      track(res.body.user.id);
+    }
+    expect((await register('2001:db8:1:2::c')).status).toBe(429);
+    const other = await register('2001:db8:1:3::a');
+    expect(other.status).not.toBe(429);
+    if (other.body.user) track(other.body.user.id);
   }, SLOW);
 });

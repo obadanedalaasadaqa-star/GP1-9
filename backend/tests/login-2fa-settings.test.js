@@ -3,8 +3,9 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const prisma = require('../src/lib/prisma');
 const { signChallenge } = require('../src/lib/token');
+const { SESSION_SELECT } = require('../src/lib/session');
 const {
-  PASSWORD, makeApp, uniqueEmail, registerUser, verifyUser, cleanup,
+  PASSWORD, makeApp, uniqueEmail, registerUser, verifyUser, allowEmailResend, cleanup,
 } = require('./helpers');
 
 // PATCH /api/user/security and the email-change rule (two-step sign-in is opt-in).
@@ -12,7 +13,12 @@ const {
 const SLOW = 90_000;
 const app = makeApp();
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
-const setSecurity = (u, body) => request(app).patch('/api/user/security').set(auth(u.token)).send(body);
+// Turning it on ends older sessions and returns a new token: keep using that one.
+async function setSecurity(u, body) {
+  const res = await request(app).patch('/api/user/security').set(auth(u.token)).send(body);
+  if (typeof res.body.token === 'string') u.token = res.body.token;
+  return res;
+}
 const login = (u) => request(app).post('/api/auth/login').send({ email: u.email, password: u.password });
 const dbValue = async (u) => (await prisma.user.findUnique({ where: { id: u.user.id } })).loginTwoFactor;
 
@@ -44,12 +50,16 @@ test('S-3: a verified user turns it on without a password; again is a no-op 200'
   expect(res.status).toBe(200);
   expect(res.body.loginTwoFactor).toBe(true);
   expect(res.body).not.toHaveProperty('password');
-  expect(Object.keys(res.body).sort()).toEqual(Object.keys(u.user).sort());
+  expect(res.body).not.toHaveProperty('tokenVersion');
+  expect(typeof res.body.token).toBe('string'); // a real change: a new session token
+  const { token, ...userKeys } = res.body;
+  expect(Object.keys(userKeys).sort()).toEqual(Object.keys(u.user).sort());
 
   const again = await setSecurity(u, { loginTwoFactor: true });
   expect(again.status).toBe(200);
   expect(again.body.loginTwoFactor).toBe(true);
   expect(again.body).not.toHaveProperty('password');
+  expect(again.body).not.toHaveProperty('token'); // no change: no new session
   expect(await dbValue(u)).toBe(true);
 }, SLOW);
 
@@ -57,11 +67,16 @@ test('S-3b: an email change between the read and the write still gives 403 and s
   const u = await registerUser(app);
   await verifyUser(u.user.id);
   // The route reads a verified user, then (like a PATCH /me on another device)
-  // the email becomes unverified before the write.
+  // the email becomes unverified before the write. The session check's own
+  // lookup (SESSION_SELECT) passes through untouched.
   const realFindUnique = prisma.user.findUnique.bind(prisma.user);
-  const spy = jest.spyOn(prisma.user, 'findUnique').mockImplementationOnce(async (args) => {
+  let unverified = false;
+  const spy = jest.spyOn(prisma.user, 'findUnique').mockImplementation(async (args) => {
     const row = await realFindUnique(args);
-    await prisma.user.update({ where: { id: u.user.id }, data: { emailVerified: false } });
+    if (args.select !== SESSION_SELECT && !unverified) {
+      unverified = true;
+      await prisma.user.update({ where: { id: u.user.id }, data: { emailVerified: false } });
+    }
     return row;
   });
   try {
@@ -148,6 +163,7 @@ test('S-7 (Q15): an email change turns two-step sign-in off', async () => {
   expect((await setSecurity(u, { loginTwoFactor: true })).status).toBe(200);
 
   const newEmail = uniqueEmail();
+  await allowEmailResend(u.user.id); // the register code was sent under a minute ago
   const res = await request(app).patch('/api/user/me').set(auth(u.token))
     .send({ firstName: 'Test', lastName: 'User', email: newEmail, currentPassword: PASSWORD });
   expect(res.status).toBe(200);

@@ -10,6 +10,9 @@ datasource db {
 
 model User {
   id            String   @id @default(uuid())
+  // New accounts are stored trimmed and lowercased. Lookups use the plain
+  // (non-unique) index nexus_users_email_lower_idx on lower(email), created in
+  // src/lib/schema.js (not expressible here).
   email         String   @unique
   password      String
   name          String
@@ -28,6 +31,8 @@ model User {
   weeklySummarySentWeek String?
   // Two-step sign-in (opt-in). Only turned on with a verified email.
   loginTwoFactor        Boolean @default(false)
+  // Session version (the "tv" claim). +1 ends every older session. Never returned.
+  tokenVersion          Int     @default(0)
 
   receipts          Receipt[]
   verificationCodes VerificationCode[]
@@ -49,6 +54,8 @@ model VerificationCode {
   expiresAt  DateTime
   attempts   Int      @default(0)
   lastSentAt DateTime @default(now())
+  // Email codes: the address the code was sent to. NULL for sign-in codes.
+  email      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

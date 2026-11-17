@@ -1,7 +1,7 @@
 // Shared bits for the AI integration tests.
 const request = require('supertest');
 const prisma = require('../src/lib/prisma');
-const { registerUser } = require('./helpers');
+const { registerUser, verifyUser } = require('./helpers');
 
 const TZ = 180; // Jordan
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -39,9 +39,11 @@ function monthLabels(months = 6, now = new Date()) {
   return out;
 }
 
-// A new user with the 7 demo receipts (287.99 JD this month).
-async function seededUser(app) {
+// A new user with the 7 demo receipts (287.99 JD this month). Verified by
+// default, because paid AI calls need a verified email.
+async function seededUser(app, { verified = true } = {}) {
   const u = await registerUser(app);
+  if (verified) await verifyUser(u.user.id);
   const res = await request(app).post('/api/receipts/seed').set(auth(u.token));
   if (res.status !== 200 || !res.body.seeded) throw new Error(`seed failed: ${res.status}`);
   return u;

@@ -3,7 +3,11 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
 const { passwordError } = require('../lib/password');
-const { checkCode, sendEmailCode, resendWaitSeconds } = require('../lib/verification');
+const { checkEmailCode, sendEmailCode, resendWaitSeconds } = require('../lib/verification');
+const { normalizeEmail, emailError, emailTaken } = require('../lib/email');
+const { cleanName, nameError } = require('../lib/names');
+const { signSession } = require('../lib/token');
+const { disconnectUser } = require('../lib/realtime');
 const { parseBounds, shapeStats } = require('../lib/stats');
 const { queryStats } = require('../lib/spendingQueries');
 const { parseTz } = require('../lib/aiDates');
@@ -25,6 +29,23 @@ const SAFE_SELECT = {
 };
 
 const NOTIFICATION_KEYS = ['budgetAlertEmails', 'weeklySummaryEmails', 'tzOffsetMinutes'];
+
+// The receipt fields the app reads (Receipt.fromJson); never userId or storeId.
+const RECEIPT_SELECT = {
+  id: true, storeName: true, category: true, totalAmount: true,
+  items: true, lineItems: true, pointsEarned: true, createdAt: true,
+};
+
+const waitError = (waitSeconds) => ({
+  error: `Please wait ${waitSeconds}s before requesting a new code.`,
+  waitSeconds,
+});
+
+// A password change, 2FA on, an email change and "sign out everywhere" end
+// every older session: the row's tokenVersion goes up in the same write, the
+// user's open sockets are dropped before the answer, and the calling device
+// gets a fresh token (except for sign out everywhere).
+const endOtherSessions = (userId) => disconnectUser(userId);
 
 // Router factory: every createApp() gets its own router and limiters.
 module.exports = function userRoutes(limiters) {
@@ -55,46 +76,93 @@ module.exports = function userRoutes(limiters) {
   const passwordCheckIfSent = (req, res, next) =>
     (req.body?.currentPassword ? limiters.passwordCheck(req, res, next) : next());
 
-  router.patch('/me', passwordCheckIfSent, async (req, res) => {
-    const firstName = req.body?.firstName?.trim();
-    const lastName  = req.body?.lastName?.trim();
-    if (!firstName || !lastName) {
-      return res.status(400).json({ error: 'First and last name are required.' });
-    }
-    const data = { firstName, lastName, name: `${firstName} ${lastName}` };
+  // Names first (no DB), then whether the email really changes. An email change
+  // must pass the password, "already registered" and the 60 s resend wait
+  // before it may use one of the hourly sendCode slots.
+  async function emailChangePrecheck(req, res, next) {
+    // Names end up in emails: control characters are stripped, length capped.
+    const firstName = cleanName(req.body?.firstName);
+    const lastName  = cleanName(req.body?.lastName);
+    const nameProblem = nameError(firstName, lastName);
+    if (nameProblem) return res.status(400).json({ error: nameProblem });
+    res.locals.names = { firstName, lastName };
+
+    const email = normalizeEmail(req.body?.email);
+    if (!email) return next(); // no email sent: a name-only edit
 
     try {
-      const email = req.body?.email?.trim();
-      if (email) {
-        const current = await prisma.user.findUnique({ where: { id: req.userId } });
-        if (!current) return res.status(404).json({ error: 'User not found.' });
+      const current = await prisma.user.findUnique({ where: { id: req.userId } });
+      if (!current) return res.status(404).json({ error: 'User not found.' });
+      // The app always sends the email, even unchanged. Another case or
+      // surrounding spaces is not a change, and an older stored address is
+      // never format-checked, so it can't block a name edit.
+      if (email === normalizeEmail(current.email)) return next();
 
-        if (email !== current.email) {
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            return res.status(400).json({ error: 'Enter a valid email.' });
-          }
-          const { currentPassword } = req.body ?? {};
-          if (!currentPassword) {
-            return res.status(400).json({ error: 'Current password is required to change your email.' });
-          }
-          if (!(await bcrypt.compare(currentPassword, current.password))) {
-            return res.status(401).json({ error: 'Current password is incorrect.' });
-          }
-          data.email = email;
-          data.emailVerified = false; // the new address must be verified again
-          // Two-step sign-in needs a verified email, so it goes off too (a
-          // typo in the new address can't lock the user out).
-          data.loginTwoFactor = false;
-        }
+      const emailProblem = emailError(email);
+      if (emailProblem) return res.status(400).json({ error: emailProblem });
+      const { currentPassword } = req.body ?? {};
+      if (typeof currentPassword !== 'string' || !currentPassword) {
+        return res.status(400).json({ error: 'Current password is required to change your email.' });
+      }
+      if (!(await bcrypt.compare(currentPassword, current.password))) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+      if (await emailTaken(email, req.userId)) {
+        return res.status(409).json({ error: 'Email already registered.' });
+      }
+      // Same wait as /email/send-code: at most one code a minute.
+      const waitSeconds = await resendWaitSeconds(req.userId, 'email');
+      if (waitSeconds > 0) return res.status(429).json(waitError(waitSeconds));
+
+      res.locals.emailChange = { email };
+      next();
+    } catch (err) {
+      console.error('[user/patch]', err);
+      res.status(500).json({ error: 'Failed to update profile.' });
+    }
+  }
+
+  // The same limiter instance as /email/send-code, so both share the user's
+  // 5 codes an hour. A name-only edit never touches it.
+  const sendCodeIfEmailChange = (req, res, next) =>
+    (res.locals.emailChange ? limiters.sendCode(req, res, next) : next());
+
+  router.patch('/me', passwordCheckIfSent, emailChangePrecheck, sendCodeIfEmailChange, async (req, res) => {
+    const { firstName, lastName } = res.locals.names;
+    const data = { firstName, lastName, name: `${firstName} ${lastName}` };
+    const change = res.locals.emailChange;
+
+    try {
+      if (!change) {
+        const user = await prisma.user.update({
+          where: { id: req.userId },
+          data,
+          select: SAFE_SELECT,
+        });
+        return res.json(user);
       }
 
-      const user = await prisma.user.update({
-        where: { id: req.userId },
-        data,
-        select: SAFE_SELECT,
-      });
-      if (data.email) await sendEmailCode(user, { ignoreWait: true });
-      res.json(user);
+      // One transaction: the new address (unverified again; two-step sign-in
+      // needs a verified email, so it goes off too and a typo can't lock the
+      // user out), a new session version, and no code for the old address.
+      const [updated] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id: req.userId },
+          data: {
+            ...data,
+            email: change.email,
+            emailVerified: false,
+            loginTwoFactor: false,
+            tokenVersion: { increment: 1 },
+          },
+          select: { ...SAFE_SELECT, tokenVersion: true },
+        }),
+        prisma.verificationCode.deleteMany({ where: { userId: req.userId, type: 'email' } }),
+      ]);
+      const { tokenVersion, ...user } = updated;
+      endOtherSessions(req.userId);
+      await sendEmailCode(user); // the old row is gone, so there is no wait
+      res.json({ ...user, token: signSession(user.id, tokenVersion) });
     } catch (err) {
       if (err.code === 'P2002') {
         return res.status(409).json({ error: 'Email already registered.' });
@@ -113,12 +181,7 @@ module.exports = function userRoutes(limiters) {
       if (user.emailVerified) return res.status(400).json({ error: 'Email is already verified.' });
 
       const waitSeconds = await resendWaitSeconds(req.userId, 'email');
-      if (waitSeconds > 0) {
-        return res.status(429).json({
-          error: `Please wait ${waitSeconds}s before requesting a new code.`,
-          waitSeconds,
-        });
-      }
+      if (waitSeconds > 0) return res.status(429).json(waitError(waitSeconds));
       res.locals.user = user; // reused by the route, saves a query
       next();
     } catch (err) {
@@ -155,14 +218,22 @@ module.exports = function userRoutes(limiters) {
     }
 
     try {
-      const problem = await checkCode(req.userId, 'email', code);
-      if (problem) return res.status(400).json({ error: problem });
-
-      const user = await prisma.user.update({
-        where: { id: req.userId },
+      const result = await checkEmailCode(req.userId, code);
+      if (result.problem) return res.status(400).json({ error: result.problem });
+      // A code from before codes were bound to an address.
+      if (result.email === null) {
+        return res.status(400).json({ error: 'This code is no longer valid. Tap "Resend code" for a new one.' });
+      }
+      // Only verifies the address the code was sent to.
+      const { count } = await prisma.user.updateMany({
+        where: { id: req.userId, email: result.email },
         data: { emailVerified: true },
-        select: SAFE_SELECT,
       });
+      if (count === 0) {
+        return res.status(400).json({ error: 'This code was sent to a different address. Tap "Resend code" for a new one.' });
+      }
+      const user = await prisma.user.findUnique({ where: { id: req.userId }, select: SAFE_SELECT });
+      if (!user) return res.status(404).json({ error: 'User not found.' });
       res.json(user);
     } catch (err) {
       console.error('[user/email/verify]', err);
@@ -189,11 +260,13 @@ module.exports = function userRoutes(limiters) {
         return res.status(401).json({ error: 'Current password is incorrect.' });
       }
 
-      await prisma.user.update({
+      const { tokenVersion } = await prisma.user.update({
         where: { id: req.userId },
-        data: { password: await bcrypt.hash(newPassword, 12) },
+        data: { password: await bcrypt.hash(newPassword, 12), tokenVersion: { increment: 1 } },
+        select: { tokenVersion: true },
       });
-      res.json({ message: 'Password updated.' });
+      endOtherSessions(req.userId);
+      res.json({ message: 'Password updated.', token: signSession(req.userId, tokenVersion) });
     } catch (err) {
       console.error('[user/password]', err);
       res.status(500).json({ error: 'Failed to update password.' });
@@ -236,16 +309,22 @@ module.exports = function userRoutes(limiters) {
         // Turn on only if the email is still verified at write time: an email
         // change in between (PATCH /me) must not leave it on for an unverified
         // address.
+        // Turning it on also ends every other session.
         const { count } = await prisma.user.updateMany({
           where: { id: req.userId, emailVerified: true },
-          data: { loginTwoFactor: true },
+          data: { loginTwoFactor: true, tokenVersion: { increment: 1 } },
         });
         if (count === 0) {
           return res.status(403).json({ error: 'Verify your email before turning on two-step sign-in.' });
         }
-        const turnedOn = await prisma.user.findUnique({ where: { id: req.userId }, select: SAFE_SELECT });
+        const turnedOn = await prisma.user.findUnique({
+          where: { id: req.userId },
+          select: { ...SAFE_SELECT, tokenVersion: true },
+        });
         if (!turnedOn) return res.status(404).json({ error: 'User not found.' });
-        return res.json(turnedOn);
+        const { tokenVersion, ...user } = turnedOn;
+        endOtherSessions(req.userId);
+        return res.json({ ...user, token: signSession(req.userId, tokenVersion) });
       }
       const updated = await prisma.user.update({
         where: { id: req.userId },
@@ -257,6 +336,25 @@ module.exports = function userRoutes(limiters) {
       if (err.code === 'P2025') return res.status(404).json({ error: 'User not found.' });
       console.error('[user/security]', err);
       res.status(500).json({ error: 'Failed to save settings.' });
+    }
+  });
+
+  // POST /api/user/logout-all — end every session of this user, this one too
+  // (no new token: the app logs out). No body needed; any body is ignored.
+  // Shares the security limiter with PATCH /security.
+  router.post('/logout-all', limiters.security, async (req, res) => {
+    try {
+      await prisma.user.update({
+        where: { id: req.userId },
+        data: { tokenVersion: { increment: 1 } },
+        select: { id: true },
+      });
+      endOtherSessions(req.userId);
+      res.json({ message: 'Signed out on all devices.' });
+    } catch (err) {
+      if (err.code === 'P2025') return res.status(404).json({ error: 'User not found.' });
+      console.error('[user/logout-all]', err);
+      res.status(500).json({ error: 'Failed to sign out.' });
     }
   });
 
@@ -308,8 +406,9 @@ module.exports = function userRoutes(limiters) {
 
   // GET /api/user/receipts
   // Optional ?from=&to= (ISO dates, from inclusive, to exclusive) filters by date.
-  // Without a range, returns the latest 50 receipts.
-  router.get('/receipts', async (req, res) => {
+  // Without a range, returns the latest 50 receipts; with one, the newest 500
+  // (a receipt a day is 365 a year). Only the fields the app reads.
+  router.get('/receipts', limiters.receiptsRead, async (req, res) => {
     const { from, to } = req.query;
     const fromDate = from ? new Date(from) : null;
     const toDate   = to   ? new Date(to)   : null;
@@ -330,7 +429,8 @@ module.exports = function userRoutes(limiters) {
           }),
         },
         orderBy: { createdAt: 'desc' },
-        take: hasRange ? 1000 : 50,
+        take: hasRange ? 500 : 50,
+        select: RECEIPT_SELECT,
       });
       res.json(receipts);
     } catch (err) {

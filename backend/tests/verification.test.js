@@ -1,8 +1,11 @@
 jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 
 const request = require('supertest');
+const prisma = require('../src/lib/prisma');
 const { lastCodeFor } = require('./mailerMock');
-const { makeApp, registerUser, cleanup } = require('./helpers');
+const {
+  PASSWORD, makeApp, uniqueEmail, registerUser, allowEmailResend, cleanup,
+} = require('./helpers');
 
 // Many sequential DB round trips; the default 30 s is too tight on the pooler.
 const SLOW = 90_000;
@@ -75,5 +78,73 @@ describe('wrong codes', () => {
       .send({ code: lastCodeFor(v.email) });
     expect(right.status).toBe(400);
     expect(right.body.error).toMatch(/Too many wrong attempts/);
+  }, SLOW);
+});
+
+// Audit L7: a code only verifies the address it was sent to.
+describe('codes are bound to their address', () => {
+  const verify = (token, code) => request(app).post('/api/user/email/verify').set(auth(token)).send({ code });
+  const codeRow = (u) => prisma.verificationCode.findUnique({
+    where: { userId_type: { userId: u.user.id, type: 'email' } },
+  });
+  const verified = async (u) => (await prisma.user.findUnique({ where: { id: u.user.id } })).emailVerified;
+
+  test('V-1 the email changed under a code (no new code): "different address", stays unverified', async () => {
+    const u = await registerUser(app);
+    const codeA = lastCodeFor(u.email);
+    await prisma.user.update({ where: { id: u.user.id }, data: { email: uniqueEmail() } });
+    const res = await verify(u.token, codeA);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('This code was sent to a different address. Tap "Resend code" for a new one.');
+    expect(await verified(u)).toBe(false);
+  }, SLOW);
+
+  test('V-2 after an email change only the new address\'s code verifies', async () => {
+    const u = await registerUser(app);
+    const codeA = lastCodeFor(u.email);
+    await allowEmailResend(u.user.id);
+    const B = uniqueEmail();
+    const changed = await request(app).patch('/api/user/me').set(auth(u.token))
+      .send({ firstName: 'Test', lastName: 'User', email: B, currentPassword: PASSWORD });
+    expect(changed.status).toBe(200);
+    const token = changed.body.token;
+    expect((await codeRow(u)).email).toBe(B);
+
+    const codeB = lastCodeFor(B);
+    if (codeA !== codeB) expect((await verify(token, codeA)).status).toBe(400);
+    const ok = await verify(token, codeB);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ email: B, emailVerified: true });
+  }, SLOW);
+
+  test('V-3 a code from before codes had an address: "no longer valid"', async () => {
+    const u = await registerUser(app);
+    const code = lastCodeFor(u.email);
+    await prisma.verificationCode.update({
+      where: { userId_type: { userId: u.user.id, type: 'email' } }, data: { email: null },
+    });
+    const res = await verify(u.token, code);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('This code is no longer valid. Tap "Resend code" for a new one.');
+    expect(await verified(u)).toBe(false);
+  }, SLOW);
+
+  test('V-4 a failed email-change transaction changes nothing', async () => {
+    const u = await registerUser(app);
+    await allowEmailResend(u.user.id);
+    const before = await codeRow(u);
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const spy = jest.spyOn(prisma, '$transaction').mockRejectedValueOnce(new Error('db'));
+    try {
+      const res = await request(app).patch('/api/user/me').set(auth(u.token))
+        .send({ firstName: 'Test', lastName: 'User', email: uniqueEmail(), currentPassword: PASSWORD });
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+      console.error.mockRestore();
+    }
+    expect((await prisma.user.findUnique({ where: { id: u.user.id } })).email).toBe(u.email);
+    expect(await codeRow(u)).toEqual(before);
+    expect((await request(app).get('/api/user/me').set(auth(u.token))).status).toBe(200); // no bump
   }, SLOW);
 });

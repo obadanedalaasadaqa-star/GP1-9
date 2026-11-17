@@ -51,7 +51,8 @@ module.exports = function storeRoutes(limiters) {
     }
     if (!row) return res.status(404).json({ error: 'No Nexus customer with this serial.' });
 
-    // Same shape as a row from GET /api/user/receipts.
+    // A row from GET /api/user/receipts plus userId and storeId (the app
+    // ignores those two).
     const receipt = {
       id: row.id,
       userId: row.userId,

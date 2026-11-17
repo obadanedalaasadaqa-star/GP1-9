@@ -3,7 +3,7 @@
 const prisma = require('./prisma');
 
 // kind only ever comes from these constants, never from a request.
-const KINDS = Object.freeze({ chat: 'chat', report: 'report', reportEmail: 'report_email' });
+const KINDS = Object.freeze({ chat: 'chat', report: 'report', reportEmail: 'report_email', insight: 'insight' });
 const VALID = new Set(Object.values(KINDS));
 
 /**

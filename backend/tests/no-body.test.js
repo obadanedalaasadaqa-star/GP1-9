@@ -6,8 +6,8 @@ const { makeApp, registerUser, createTestStore, cleanup } = require('./helpers')
 // Express 5 leaves req.body undefined (not {}) when a request sends no body.
 // Every write route must answer that with a 4xx JSON error, never a 500.
 // Left out on purpose: routes where an empty body is a valid request that
-// sends mail or creates data (/user/email/send-code, /receipts/seed,
-// /ai/report/email).
+// sends mail, creates data or ends sessions (/user/email/send-code,
+// /receipts/seed, /ai/report/email, /user/logout-all).
 const SLOW = 90_000;
 const app = makeApp({ aiClient: null });
 const auth = (token) => ({ Authorization: `Bearer ${token}` });

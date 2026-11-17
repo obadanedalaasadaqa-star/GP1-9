@@ -16,7 +16,7 @@ const {
 } = require('../lib/report');
 
 const DAY_MS = 24 * 3600 * 1000;
-const DEFAULT_AI_CAPS = Object.freeze({ chatPerDay: 30, reportPerDay: 10, emailPerDay: 5 });
+const DEFAULT_AI_CAPS = Object.freeze({ chatPerDay: 30, reportPerDay: 10, emailPerDay: 5, insightPerDay: 20 });
 
 const MAX_QUESTION = 500;
 const MAX_HISTORY = 10;
@@ -24,6 +24,14 @@ const MAX_USER_TEXT = 500;
 const MAX_ASSISTANT_TEXT = 1500;
 const NO_RECEIPTS_ANSWER = "You don't have any receipts in Nexus yet. Scan your QR code at a store or add a receipt, then ask me again.";
 const REPORT_CAP_TEXT = "You've reached today's limit of AI report summaries. The numbers are still up to date.";
+const INSIGHT_CAP_TEXT = "You've reached today's limit of new insights. Try again tomorrow.";
+// Paid AI work needs a verified email, so new throwaway accounts can't multiply
+// the AI bill. Everything free (cached text, numbers) works without it.
+const VERIFY_INSIGHT_TEXT = 'Verify your email to get AI insights.';
+const VERIFY_CHAT_TEXT = 'Verify your email to use Ask AI.';
+const VERIFY_REPORT_TEXT = 'Verify your email to get the AI summary.';
+// Thrown inside the shared insight promise when the daily cap is reached.
+const INSIGHT_CAP = Symbol('insight cap');
 
 // Every chat length limit counts Unicode code points, like the app (runes).
 const len = (s) => [...s].length;
@@ -86,6 +94,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
       const hash = factsHash(facts, AI_MODEL(), 'insight');
       const saved = await prisma.aiInsight.findUnique({ where: { userId: req.userId } });
       if (isFresh(saved, hash)) return res.json(insightReply(saved, true));
+      if (!req.emailVerified) return res.status(403).json({ error: VERIFY_INSIGHT_TEXT });
 
       res.locals.insight = { facts, hash };
       next();
@@ -114,8 +123,19 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
             const saved = await prisma.aiInsight.findUnique({ where: { userId } });
             if (isFresh(saved, hash)) return { row: saved, cached: true };
 
+            // One slot per shared promise, so parallel identical requests take one.
+            const left = await takeQuota(userId, KINDS.insight, caps.insightPerDay);
+            if (left === null) throw INSIGHT_CAP;
+
             const started = Date.now();
-            const out = await generateInsight(client, facts);
+            let out;
+            try {
+              out = await generateInsight(client, facts);
+            } catch (err) {
+              await recordTokens(userId, KINDS.insight, err?.usage); // never throws
+              throw err;
+            }
+            await recordTokens(userId, KINDS.insight, out.usage);
             console.log(`[ai/insight] generated user=${userId} model=${out.model} ` +
               `in=${out.usage.input} out=${out.usage.output} ${Date.now() - started}ms`);
             const data = {
@@ -135,6 +155,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
       const { row, cached } = await p;
       res.json(insightReply(row, cached));
     } catch (err) {
+      if (err === INSIGHT_CAP) return res.status(429).json({ error: INSIGHT_CAP_TEXT });
       const mapped = aiErrorResponse(err, 'insight');
       if (!mapped) {
         console.error('[ai/insight]', err);
@@ -167,6 +188,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
       if (await spendingQueries.countReceipts(req.userId) === 0) {
         return res.json({ answer: NO_RECEIPTS_ANSWER, toolsUsed: [], remainingToday: null, chart: null });
       }
+      if (!req.emailVerified) return res.status(403).json({ error: VERIFY_CHAT_TEXT });
       res.locals.chat = { question, history, tz };
       next();
     } catch (err) {
@@ -298,8 +320,9 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
 
   // Every number (always) plus the AI part (when possible). With
   // newAi false only a fresh saved AI text is used and Claude is never
-  // called (the email path: fast, and no second paid call).
-  async function buildReport(userId, r, tz, { newAi = true } = {}) {
+  // called (the email path: fast, and no second paid call). verified false:
+  // no new AI text either (a saved one is still shown).
+  async function buildReport(userId, r, tz, { newAi = true, verified = true } = {}) {
     const numbers = await buildReportNumbers(userId, r, tz);
     const facts = buildReportFacts(numbers, { soFar: r.soFar, tz });
     const hash = factsHash(facts, AI_MODEL(), 'report');
@@ -312,6 +335,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
       if (isFresh(saved, hash)) ai = reportReady(saved, true);
       else if (!client) ai = { status: 'unavailable', error: 'AI summary is not set up on this server.' };
       else if (!newAi) ai = { status: 'unavailable', error: 'AI summary is not available right now.' };
+      else if (!verified) ai = { status: 'unavailable', error: VERIFY_REPORT_TEXT };
       else ai = await reportAi(client, userId, r, facts, hash);
     }
     return { ...numbers, ai };
@@ -332,7 +356,7 @@ module.exports = function aiRoutes(limiters, { getAiClient, caps: capOverrides }
     try {
       const parsed = reportParams(req.query);
       if (parsed.error) return res.status(400).json({ error: parsed.error });
-      res.json(await buildReport(req.userId, parsed.r, parsed.tz));
+      res.json(await buildReport(req.userId, parsed.r, parsed.tz, { verified: req.emailVerified === true }));
     } catch (err) {
       console.error('[ai/report]', err);
       res.status(500).json({ error: 'Failed to build report.' });

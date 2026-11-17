@@ -3,11 +3,11 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const Anthropic = require('@anthropic-ai/sdk');
 const prisma = require('../src/lib/prisma');
-const { makeApp, registerUser, createTestStore, cleanup } = require('./helpers');
+const { makeApp, registerUser, verifyUser, createTestStore, cleanup } = require('./helpers');
 const { makeFakeAi, json, reply, wait, defaultInsight } = require('./fakeAi');
 const { seedFacts } = require('./fixtures/seedFacts');
 const { formatAmount } = require('../src/lib/aiFormat');
-const { auth, jordanBounds, monthLabels, seededUser, addReceipt } = require('./aiHelpers');
+const { auth, jordanBounds, monthLabels, seededUser, addReceipt, usageRow } = require('./aiHelpers');
 
 // Many sequential DB round trips; the default 30 s is too tight on the pooler.
 const SLOW = 120_000;
@@ -110,6 +110,7 @@ describe('GET /api/ai/insight', () => {
 
   test('I-7 not enough data below 3 receipts', async () => {
     const u = await registerUser(app);
+    await verifyUser(u.user.id); // the 3rd receipt leads to a paid insight
     expect((await getInsight(u.token)).body).toEqual({ status: 'not_enough_data', receiptCount: 0, minReceipts: 3 });
     await addReceipt(app, u.token, 'A', 'Food', 10);
     await addReceipt(app, u.token, 'B', 'Food', 15.5);
@@ -310,5 +311,56 @@ describe('GET /api/ai/insight', () => {
     expect(find).toHaveBeenCalled();
     expect((await getInsight(u.token)).status).toBe(200);
     expect((await request(app).get('/api/health')).status).toBe(200);
+  }, SLOW);
+});
+
+// Audit L3/L4: paid insights need a verified email and have a daily cap.
+describe('GET /api/ai/insight: verified email and daily cap', () => {
+  test('I-18 the daily cap: 2 new insights, then 429; a cached repeat takes no slot', async () => {
+    const capped = makeApp({ aiClient: ai.client, aiCaps: { insightPerDay: 2 } });
+    const u = await seededUser(capped);
+    const A = BOUNDS;
+    const B = jordanBounds({ shift: 1 }); // other numbers, so another insight
+
+    expect((await getInsight(u.token, A, capped)).body.cached).toBe(false);
+    const repeat = await getInsight(u.token, A, capped);
+    expect(repeat.body.cached).toBe(true); // free: no slot
+    expect((await getInsight(u.token, B, capped)).body.cached).toBe(false);
+
+    const third = await getInsight(u.token, A, capped);
+    expect(third.status).toBe(429);
+    expect(third.body).toEqual({ error: "You've reached today's limit of new insights. Try again tomorrow." });
+    expect(ai.create).toHaveBeenCalledTimes(2);
+    const row = await usageRow(u.user.id, 'insight');
+    expect(row.count).toBe(2);
+    expect(row.inputTokens).toBeGreaterThan(0); // tokens are recorded too
+  }, SLOW);
+
+  test('I-19 unverified with enough receipts: 403, Claude is never called', async () => {
+    const u = await seededUser(app, { verified: false });
+    const res = await getInsight(u.token);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Verify your email to get AI insights.' });
+    expect(ai.create).not.toHaveBeenCalled();
+    expect(await usageRow(u.user.id, 'insight')).toBeNull();
+  }, SLOW);
+
+  test('I-20 a saved insight is still served to an unverified user', async () => {
+    const u = await seededUser(app);
+    expect((await getInsight(u.token)).body.cached).toBe(false);
+    await prisma.user.update({ where: { id: u.user.id }, data: { emailVerified: false } });
+    const res = await getInsight(u.token);
+    expect(res.status).toBe(200);
+    expect(res.body.cached).toBe(true);
+    expect(ai.create).toHaveBeenCalledTimes(1);
+  }, SLOW);
+
+  test('I-21 not enough data is answered before the verify check', async () => {
+    const u = await registerUser(app);
+    const res = await getInsight(u.token);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('not_enough_data');
+    await verifyUser(u.user.id); // the same answer once verified
+    expect((await getInsight(u.token)).body.status).toBe('not_enough_data');
   }, SLOW);
 });

@@ -1,6 +1,7 @@
 jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 
 const request = require('supertest');
+const prisma = require('../src/lib/prisma');
 const { sendVerificationEmail } = require('./mailerMock');
 const {
   PASSWORD, makeApp, uniqueEmail, track, registerUser, cleanup,
@@ -156,4 +157,74 @@ describe('POST /api/auth/login', () => {
     expect(res1.status).toBe(400);
     expect(res2.status).toBe(400);
   });
+});
+
+// Audit L12: emails are normalized at register; older rows still sign in.
+describe('email normalization', () => {
+  const register = (overrides) => request(app).post('/api/auth/register').send(newUserBody(overrides));
+  const login = (email, password = PASSWORD) => request(app).post('/api/auth/login').send({ email, password });
+  const caseVariant = (email) => email.replace('test_', 'Test_').replace('@nexus.test', '@Nexus.Test');
+
+  test('R-1 register trims and lowercases the email', async () => {
+    const plain = uniqueEmail();
+    const res = await register({ email: `  ${caseVariant(plain)} ` });
+    expect(res.status).toBe(201);
+    track(res.body.user.id);
+    expect(res.body.user.email).toBe(plain);
+    expect((await login(plain)).status).toBe(200);
+  }, SLOW);
+
+  test('R-2 a badly formatted or too long email is 400', async () => {
+    for (const email of ['a@b', 'no-at.nexus.test', `${'a'.repeat(251)}@b.c`]) {
+      const res = await register({ email });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Enter a valid email.');
+    }
+  }, SLOW);
+
+  test('R-3 a case variant of an existing email is 409', async () => {
+    const u = await registerUser(app);
+    const res = await register({ email: u.email.toUpperCase() });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('Email already registered.');
+  }, SLOW);
+
+  test('R-4 an older mixed-case row signs in with its exact, lower and upper case forms', async () => {
+    const u = await registerUser(app);
+    const mixed = caseVariant(u.email);
+    await prisma.user.update({ where: { id: u.user.id }, data: { email: mixed } });
+    for (const form of [mixed, mixed.toLowerCase(), mixed.toUpperCase(), ` ${mixed} `]) {
+      const res = await login(form);
+      expect(res.status).toBe(200);
+      expect(res.body.user.id).toBe(u.user.id);
+    }
+  }, SLOW);
+
+  test('R-5 two rows that differ only in case: a third form is ambiguous (401); each exact form works', async () => {
+    const one = await registerUser(app);
+    const two = await registerUser(app);
+    const base = uniqueEmail();
+    const formOne = base.replace('test_', 'Test_');
+    const formTwo = base.replace('@nexus.test', '@Nexus.Test');
+    await prisma.user.update({ where: { id: one.user.id }, data: { email: formOne } });
+    await prisma.user.update({ where: { id: two.user.id }, data: { email: formTwo } });
+    const third = await login(base.toUpperCase());
+    expect(third.status).toBe(401);
+    expect(third.body.error).toBe('Invalid email or password.');
+    expect((await login(formOne)).body.user.id).toBe(one.user.id);
+    expect((await login(formTwo)).body.user.id).toBe(two.user.id);
+  }, SLOW);
+
+  test('R-6 an older row without a dot after @ still signs in (no format check at login)', async () => {
+    const u = await registerUser(app);
+    const odd = u.email.replace('@nexus.test', '@nexus');
+    await prisma.user.update({ where: { id: u.user.id }, data: { email: odd } });
+    expect((await login(odd)).status).toBe(200);
+  }, SLOW);
+
+  test('R-7 _ and % in a login email are not wildcards', async () => {
+    const u = await registerUser(app);
+    const pattern = u.email.replace('test_', 'test%').replace(/\d/, '_');
+    expect((await login(pattern)).status).toBe(401);
+  }, SLOW);
 });

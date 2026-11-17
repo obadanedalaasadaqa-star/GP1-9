@@ -10,8 +10,9 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const prisma = require('../src/lib/prisma');
 const { resetDemoAccount } = require('../src/lib/demoData');
 
-// Emails are stored as typed at register, so the match is exact (only spaces
-// trimmed): two addresses that differ only in letter case are two accounts.
+// Older accounts kept their email as typed at register, so the match is exact
+// (only spaces trimmed): two addresses that differ only in letter case are two
+// accounts. Accounts registered since Phase 8 are stored lowercased.
 const norm = (e) => (e ?? '').trim();
 
 function usage(problem) {

@@ -54,7 +54,7 @@ describe('loginChallenge', () => {
   test('a session token as the challenge gives 401', () => {
     const res = fakeRes();
     const next = jest.fn();
-    loginChallenge({ body: { challengeToken: signSession('user-1') } }, res, next);
+    loginChallenge({ body: { challengeToken: signSession('user-1', 0) } }, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(401);
   });

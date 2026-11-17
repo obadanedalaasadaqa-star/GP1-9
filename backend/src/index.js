@@ -8,13 +8,16 @@ const { mailProvider } = require('./lib/mailer');
 const { isLoginTwoFactorAllowed } = require('./lib/loginTwoFactor');
 const { AI_MODEL, useFallbacks } = require('./lib/ai');
 const { startWeeklyJob } = require('./lib/weeklyJob');
+const { jwtSecretProblem } = require('./lib/startupChecks');
 
 const PORT = process.env.PORT || 3001;
 
 async function start() {
-  // Warning only: the server still starts.
-  if (process.env.NODE_ENV === 'production' && (process.env.JWT_SECRET || '').length < 32) {
-    console.log('   WARNING: JWT_SECRET is short; use 32+ random characters');
+  // On Render (RENDER=true) or with NODE_ENV=production: no weak secret.
+  const problem = jwtSecretProblem(process.env);
+  if (problem) {
+    console.error(`Refusing to start: ${problem}`);
+    process.exit(1);
   }
   await ensureSchema();
   const provider = mailProvider();

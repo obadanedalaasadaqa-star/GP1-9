@@ -9,10 +9,11 @@ const PASSWORD = 'Nexus@2026';
 const tracked = new Set();
 const trackedStores = new Set();
 
-// App without rate limits, so tests never trip each other's limits.
+// App without rate limits, so tests never trip each other's limits, and with
+// the test-only POST /api/receipts and /seed routes (production has neither).
 // opts: extra createApp options (aiClient, aiCaps, or rateLimit overrides).
 function makeApp(opts = {}) {
-  return createApp({ rateLimit: false, ...opts });
+  return createApp({ rateLimit: false, testRoutes: true, ...opts });
 }
 
 // test_<time><random>@nexus.test — matched by the cleanup SQL in the README.
@@ -39,6 +40,15 @@ async function registerUser(app = makeApp()) {
   }
   track(res.body.user.id);
   return { token: res.body.token, user: res.body.user, password: PASSWORD, email };
+}
+
+// Skip the 60 s resend wait of the user's email code (register sends one), so
+// an email change right after registerUser is not answered "Please wait".
+function allowEmailResend(userId) {
+  return prisma.verificationCode.updateMany({
+    where: { userId, type: 'email' },
+    data: { lastSentAt: new Date(Date.now() - 61 * 1000) },
+  });
 }
 
 // Mark a user's email as verified without going through the code flow.
@@ -78,6 +88,6 @@ async function cleanup() {
 }
 
 module.exports = {
-  PASSWORD, makeApp, uniqueEmail, track, registerUser, verifyUser,
+  PASSWORD, makeApp, uniqueEmail, track, registerUser, verifyUser, allowEmailResend,
   createTestStore, cleanup,
 };

@@ -204,7 +204,7 @@ describe('GET /api/ai/report', () => {
 
 describe('POST /api/ai/report/email', () => {
   test('E-1 unverified: 403, nothing sent, no slot', async () => {
-    const u = await seededUser(app);
+    const u = await seededUser(app, { verified: false });
     const res = await emailReport(u.token);
     expect([res.status, res.body]).toEqual([403, { error: 'Verify your email first to get reports by email.' }]);
     expect(mailer.sentReports).toHaveLength(0);
@@ -276,5 +276,25 @@ describe('POST /api/ai/report/email', () => {
     const res = await emailReport(u.token, { period: 'week' });
     expect([res.status, res.body]).toEqual([400, { error: 'period must be 1m, 3m, 6m, 1y or custom.' }]);
     expect((await request(app).post('/api/ai/report/email').send({ period: '1m' })).status).toBe(401);
+  }, SLOW);
+});
+
+// Audit L3: a new AI summary needs a verified email; the numbers do not.
+describe('GET /api/ai/report: verified email', () => {
+  test('R-12 unverified: 200 with the numbers, AI unavailable with the verify text, no Claude call', async () => {
+    const u = await seededUser(app, { verified: false });
+    const res = await getReport(u.token);
+    expect(res.status).toBe(200);
+    expect(res.body.totals).toEqual({ total: 287.99, receipts: 7, average: 41.141 });
+    expect(res.body.ai).toEqual({ status: 'unavailable', error: 'Verify your email to get the AI summary.' });
+    expect(ai.create).not.toHaveBeenCalled();
+    expect(await usageRow(u.user.id, 'report')).toBeNull();
+  }, SLOW);
+
+  test('R-13 verified: the AI summary as before', async () => {
+    const u = await seededUser(app);
+    const res = await getReport(u.token);
+    expect(res.body.ai.status).toBe('ready');
+    expect(ai.create).toHaveBeenCalledTimes(1);
   }, SLOW);
 });

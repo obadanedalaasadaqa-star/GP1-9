@@ -7,6 +7,8 @@ const { io: connectClient } = require('socket.io-client');
 const { createApp } = require('../src/app');
 const { initRealtime, closeRealtime } = require('../src/lib/realtime');
 const { signChallenge } = require('../src/lib/token');
+const prisma = require('../src/lib/prisma');
+const { SESSION_SELECT } = require('../src/lib/session');
 const { registerUser, createTestStore, cleanup } = require('./helpers');
 
 // Many DB round trips per test; the default 30 s is too tight on the pooler.
@@ -116,10 +118,12 @@ test.each([
 });
 
 test('an expired token is disconnected by the server, and a reconnect is refused', async () => {
-  const token = jwt.sign({ userId: a.user.id }, process.env.JWT_SECRET, { expiresIn: 2 });
+  // 6 s: the handshake now includes a session lookup in the DB, so the token
+  // must outlive it (with 2 s it could expire before the test listens).
+  const token = jwt.sign({ userId: a.user.id }, process.env.JWT_SECRET, { expiresIn: 6 });
   const socket = await connect(token);
 
-  const reason = await once(socket, 'disconnect', 4000);
+  const reason = await once(socket, 'disconnect', 8000);
   expect(reason).toBe('io server disconnect');
   await sleep(500);
   expect(socket.connected).toBe(false); // the client does not reconnect by itself
@@ -129,7 +133,7 @@ test('an expired token is disconnected by the server, and a reconnect is refused
   const refused = once(socket, 'connect_error', 4000);
   socket.connect();
   expect((await refused).message).toBe('unauthorized');
-}, 15_000);
+}, 30_000);
 
 test('done-when: nothing is lost while the phone is offline', async () => {
   const before = await request(app).get('/api/user/me').set(auth(a.token));
@@ -142,4 +146,40 @@ test('done-when: nothing is lost while the phone is offline', async () => {
   const me = await request(app).get('/api/user/me').set(auth(a.token));
   expect(list.body[0].id).toBe(res.body.receiptId);
   expect(me.body.loyaltyPoints).toBe(before.body.loyaltyPoints + 2);
+}, SLOW);
+
+// Audit L2: ending a session drops its sockets and refuses its token.
+test('a password change drops the open socket; the old token is refused, the new one connects', async () => {
+  const c = await registerUser(app);
+  const socket = await connect(c.token);
+  const reason = once(socket, 'disconnect', 10_000);
+  const res = await request(app).patch('/api/user/password').set(auth(c.token))
+    .send({ currentPassword: c.password, newPassword: 'Better@2027' });
+  expect(res.status).toBe(200);
+  expect(await reason).toBe('io server disconnect');
+
+  const { err } = await connect(c.token, { waitFor: 'error' });
+  expect(err.message).toBe('unauthorized');
+  await connect(res.body.token);
+  await connect(b.token); // another user is not affected
+}, SLOW);
+
+test('a token from before session versions (no tv) still connects', async () => {
+  await connect(jwt.sign({ userId: a.user.id }, process.env.JWT_SECRET, { expiresIn: '7d' }));
+}, SLOW);
+
+test('a session that ends between the handshake and the join is dropped right after connecting', async () => {
+  // The second session lookup (after the join) sees a newer version, as if
+  // logout-all ran in between.
+  const real = prisma.user.findUnique.bind(prisma.user);
+  let lookups = 0;
+  jest.spyOn(prisma.user, 'findUnique').mockImplementation(async (args) => {
+    const row = await real(args);
+    if (args.select === SESSION_SELECT && ++lookups === 2 && row) {
+      return { ...row, tokenVersion: row.tokenVersion + 1 };
+    }
+    return row;
+  });
+  const socket = await connect(b.token);
+  expect(await once(socket, 'disconnect', 10_000)).toBe('io server disconnect');
 }, SLOW);

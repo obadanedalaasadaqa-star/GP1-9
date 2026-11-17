@@ -29,10 +29,11 @@ async function resendWaitSeconds(userId, type) {
 }
 
 /**
- * Create (or replace) the user's code of [type].
+ * Create (or replace) the user's code of [type]. [email]: the address an
+ * email code is sent to (it only verifies that address); null for sign-in codes.
  * Returns { code } or { waitSeconds } if a code was sent less than a minute ago.
  */
-async function issueCode(userId, type, { ignoreWait = false } = {}) {
+async function issueCode(userId, type, { ignoreWait = false, email } = {}) {
   const existing = await prisma.verificationCode.findUnique({
     where: { userId_type: { userId, type } },
   });
@@ -47,6 +48,7 @@ async function issueCode(userId, type, { ignoreWait = false } = {}) {
     expiresAt: new Date(Date.now() + CODE_TTL_MS),
     attempts: 0,
     lastSentAt: new Date(),
+    email: email ?? null,
   };
   await prisma.verificationCode.upsert({
     where: { userId_type: { userId, type } },
@@ -56,17 +58,15 @@ async function issueCode(userId, type, { ignoreWait = false } = {}) {
   return { code };
 }
 
-/**
- * Check [code]. Returns null on success (and deletes the code),
- * or an error message explaining why it failed.
- */
-async function checkCode(userId, type, code) {
+// The rules shared by checkCode and checkEmailCode: { row } on success (the
+// code is deleted), otherwise { problem } with the error message.
+async function consumeCode(userId, type, code) {
   const row = await prisma.verificationCode.findUnique({
     where: { userId_type: { userId, type } },
   });
-  if (!row) return 'No active code. Tap "Resend code" to get a new one.';
-  if (row.expiresAt < new Date()) return 'This code has expired. Tap "Resend code" for a new one.';
-  if (row.attempts >= MAX_ATTEMPTS) return 'Too many wrong attempts. Tap "Resend code" for a new one.';
+  if (!row) return { problem: 'No active code. Tap "Resend code" to get a new one.' };
+  if (row.expiresAt < new Date()) return { problem: 'This code has expired. Tap "Resend code" for a new one.' };
+  if (row.attempts >= MAX_ATTEMPTS) return { problem: 'Too many wrong attempts. Tap "Resend code" for a new one.' };
 
   if (hashCode(userId, String(code).trim()) !== row.codeHash) {
     await prisma.verificationCode.update({
@@ -74,13 +74,35 @@ async function checkCode(userId, type, code) {
       data: { attempts: { increment: 1 } },
     });
     const left = MAX_ATTEMPTS - row.attempts - 1;
-    return left > 0
-      ? `Incorrect code. ${left} attempt${left === 1 ? '' : 's'} left.`
-      : 'Too many wrong attempts. Tap "Resend code" for a new one.';
+    return {
+      problem: left > 0
+        ? `Incorrect code. ${left} attempt${left === 1 ? '' : 's'} left.`
+        : 'Too many wrong attempts. Tap "Resend code" for a new one.',
+    };
   }
 
   await prisma.verificationCode.delete({ where: { id: row.id } });
-  return null;
+  return { row };
+}
+
+/**
+ * Check [code]. Returns null on success (and deletes the code),
+ * or an error message explaining why it failed.
+ */
+async function checkCode(userId, type, code) {
+  const { problem } = await consumeCode(userId, type, code);
+  return problem ?? null;
+}
+
+/**
+ * Check an email verification code. { problem } when it fails, otherwise
+ * { email }: the address it was sent to (null for a code from before codes
+ * were bound to an address). The code is deleted on success.
+ */
+async function checkEmailCode(userId, code) {
+  const { problem, row } = await consumeCode(userId, 'email', code);
+  if (problem) return { problem };
+  return { email: row.email ?? null };
 }
 
 /**
@@ -91,7 +113,7 @@ async function checkCode(userId, type, code) {
 async function sendEmailCode(user, opts) {
   const { sendVerificationEmail } = require('./mailer');
   try {
-    const result = await issueCode(user.id, 'email', opts);
+    const result = await issueCode(user.id, 'email', { ...opts, email: user.email });
     if (result.code) await sendVerificationEmail(user.email, user.firstName, result.code);
     return result;
   } catch (err) {
@@ -100,4 +122,4 @@ async function sendEmailCode(user, opts) {
   }
 }
 
-module.exports = { issueCode, resendWaitSeconds, checkCode, sendEmailCode };
+module.exports = { issueCode, resendWaitSeconds, checkCode, checkEmailCode, sendEmailCode };

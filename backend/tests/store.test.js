@@ -1,6 +1,7 @@
 jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 
 const request = require('supertest');
+const prisma = require('../src/lib/prisma');
 const mailer = require('./mailerMock');
 const {
   makeApp, registerUser, verifyUser, createTestStore, cleanup,
@@ -81,7 +82,10 @@ describe('POST /api/store/receipts', () => {
     expect(first.id).toBe(res.body.receiptId);
     expect(first.storeName).toBe(shop.store.name);
     expect(first.category).toBe('Supermarket');
-    expect(first.storeId).toBe(shop.store.id);
+    // The list leaves out storeId (the app never reads it); the row keeps it.
+    expect(first).not.toHaveProperty('storeId');
+    const row = await prisma.receipt.findUnique({ where: { id: first.id } });
+    expect(row.storeId).toBe(shop.store.id);
     expect(first.items).toEqual(['Rice 2kg', 'Milk x2', 'Bread']);
     expect(first.pointsEarned).toBe(10);
     // Full lines for the receipt screen, in the order the cashier sent them.

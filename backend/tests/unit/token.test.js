@@ -13,7 +13,7 @@ const past = () => Math.floor(Date.now() / 1000) - 10;
 
 describe('sessions', () => {
   test('round trip returns userId and exp', () => {
-    const s = verifySession(signSession('user-1'));
+    const s = verifySession(signSession('user-1', 0));
     expect(s.userId).toBe('user-1');
     expect(s.exp).toBeGreaterThan(Date.now() / 1000 + 6 * 24 * 3600);
   });
@@ -46,7 +46,7 @@ describe('challenges', () => {
 
   test.each([
     ['an expired challenge', () => jwt.sign({ sub: 'u', purpose: 'login-2fa', pwd: 'x', exp: past() }, challengeKey())],
-    ['a session token', () => signSession('user-1')],
+    ['a session token', () => signSession('user-1', 0)],
     ['a challenge signed with plain JWT_SECRET', () => jwt.sign({ sub: 'u', purpose: 'login-2fa', pwd: 'x' }, SECRET)],
     ['a wrong purpose', () => jwt.sign({ sub: 'u', purpose: 'other', pwd: 'x' }, challengeKey())],
     ['a missing sub', () => jwt.sign({ purpose: 'login-2fa', pwd: 'x' }, challengeKey())],
@@ -61,5 +61,24 @@ describe('challenges', () => {
     expect(passwordTag('hash-a')).toHaveLength(16);
     expect(passwordTag('hash-a')).toBe(passwordTag('hash-a'));
     expect(passwordTag('hash-a')).not.toBe(passwordTag('hash-b'));
+  });
+});
+
+describe('session version (tv)', () => {
+  test('signSession puts the version in; verifySession gives it back', () => {
+    expect(verifySession(signSession('u', 3))).toMatchObject({ userId: 'u', tv: 3 });
+    expect(jwt.decode(signSession('u', 3)).tv).toBe(3);
+  });
+
+  test('a token without tv (from before versions) counts as version 0', () => {
+    expect(verifySession(jwt.sign({ userId: 'u' }, SECRET, { expiresIn: '7d' })).tv).toBe(0);
+  });
+
+  test.each([[-1], ['1'], [1.5], [null]])('tv %p gives null', (tv) => {
+    expect(verifySession(jwt.sign({ userId: 'u', tv }, SECRET))).toBeNull();
+  });
+
+  test.each([[undefined], [-1], ['0'], [1.5], [null]])('signSession with version %p throws', (v) => {
+    expect(() => signSession('u', v)).toThrow();
   });
 });

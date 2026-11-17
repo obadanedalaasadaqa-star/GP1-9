@@ -41,6 +41,7 @@ async function enableTwoFactor(u) {
   const res = await request(app).patch('/api/user/security').set(auth(u.token)).send({ loginTwoFactor: true });
   expect(res.status).toBe(200);
   expect(res.body.loginTwoFactor).toBe(true);
+  u.token = res.body.token; // turning it on ends older sessions
 }
 
 async function twoFactorUser() {
@@ -205,7 +206,7 @@ describe('L-6: validation', () => {
       { sub: u.user.id, purpose: 'login-2fa', pwd: jwt.decode(challenge).pwd, exp: Math.floor(Date.now() / 1000) - 5 },
       key,
     );
-    for (const token of [tampered, expired, signSession(u.user.id)]) {
+    for (const token of [tampered, expired, signSession(u.user.id, 0)]) {
       expect((await sendCode(token)).status).toBe(401);
       const res = await verify(token, '123456');
       expect(res.status).toBe(401);

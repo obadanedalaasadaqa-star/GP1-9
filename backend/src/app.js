@@ -27,8 +27,10 @@ function trustProxySetting() {
  * aiClient: undefined = the real Claude client (null without ANTHROPIC_API_KEY);
  * tests pass a fake, or null for "not configured".
  * aiCaps: overrides of the daily AI caps (see routes/ai.js DEFAULT_AI_CAPS).
+ * testRoutes: true mounts POST /api/receipts and /api/receipts/seed (tests
+ * only; index.js never passes it, so production has neither route).
  */
-function createApp({ rateLimit, aiClient, aiCaps } = {}) {
+function createApp({ rateLimit, aiClient, aiCaps, testRoutes = false } = {}) {
   const app = express();
   const limiters = makeLimiters(rateLimit);
   const getAiClient = aiClient === undefined ? realGetAiClient : () => aiClient;
@@ -39,7 +41,7 @@ function createApp({ rateLimit, aiClient, aiCaps } = {}) {
 
   app.use('/api/auth', authRoutes(limiters));
   app.use('/api/user', userRoutes(limiters));
-  app.use('/api/receipts', receiptRoutes);
+  if (testRoutes === true) app.use('/api/receipts', receiptRoutes());
   app.use('/api/store', storeRoutes(limiters));
   app.use('/api/ai', aiRoutes(limiters, { getAiClient, caps: aiCaps }));
   app.use('/api/budgets', budgetRoutes(limiters));

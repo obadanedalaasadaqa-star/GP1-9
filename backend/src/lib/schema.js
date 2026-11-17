@@ -114,7 +114,7 @@ async function ensureSchema() {
   `);
   console.log('   DB: nexus_ai_insights table ready');
 
-  // Daily AI use per user and kind ('chat' | 'report' | 'report_email') on the
+  // Daily AI use per user and kind ('chat' | 'report' | 'report_email' | 'insight') on the
   // UTC day: the daily caps and the tokens paid.
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS nexus_ai_usage (
@@ -199,6 +199,29 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS "loginTwoFactor" BOOLEAN NOT NULL DEFAULT false;
   `);
   console.log('   DB: nexus_users loginTwoFactor column ready');
+
+  // Session version: every session token carries it ("tv"), and a password
+  // change, 2FA on, an email change or "sign out everywhere" adds 1, so every
+  // older token stops working. Existing users start at 0, like tokens without it.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "tokenVersion" INTEGER NOT NULL DEFAULT 0;
+  `);
+  console.log('   DB: nexus_users tokenVersion column ready');
+
+  // The address an email code was sent to, so it only verifies that address.
+  // NULL for sign-in codes and for codes from before this column.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_verification_codes ADD COLUMN IF NOT EXISTS email TEXT;
+  `);
+  console.log('   DB: nexus_verification_codes email column ready');
+
+  // Case-insensitive email lookups (login, "already registered"). Not unique on
+  // purpose: older rows may differ only in case.
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS nexus_users_email_lower_idx ON nexus_users (lower(email));
+  `);
+  console.log('   DB: nexus_users lower(email) index ready');
 }
 
 module.exports = { ensureSchema };

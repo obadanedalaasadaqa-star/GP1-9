@@ -3,9 +3,6 @@ const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth');
 const { parseUserReceipt } = require('../lib/storeReceipt');
 
-const router = express.Router();
-router.use(authMiddleware);
-
 const DEMO_RECEIPTS = [
   { storeName: 'Carrefour',         category: 'Supermarket', totalAmount: 45.50, items: ['Milk x2', 'Bread', 'Eggs x12', 'Chicken 1kg', 'Rice 2kg'],   pointsEarned: 45 },
   { storeName: 'City Pharmacy',     category: 'Pharmacy',    totalAmount: 23.00, items: ['Vitamin C', 'Panadol x20', 'Hand Sanitizer'],                  pointsEarned: 23 },
@@ -16,66 +13,74 @@ const DEMO_RECEIPTS = [
   { storeName: 'iStore',            category: 'Electronics', totalAmount: 89.99, items: ['USB-C Cable', 'Screen Protector', 'Phone Case'],               pointsEarned: 89 },
 ];
 
-// POST /api/receipts — create a single receipt (called by store scanner in production)
-// Body: { storeName (1-60), category (1-40), totalAmount (number, 0 < x <= 10000),
-// items (0-100 strings of at most 200 chars) }. See parseUserReceipt.
-router.post('/', async (req, res) => {
-  const parsed = parseUserReceipt(req.body);
-  if (parsed.error) return res.status(400).json({ error: parsed.error });
-  const { storeName, category, totalAmount, items } = parsed;
+// Router factory, mounted only by tests (createApp({ testRoutes: true })):
+// production has neither route, so nobody can credit themselves receipts or
+// points. Stores send receipts through POST /api/store/receipts.
+module.exports = function receiptRoutes() {
+  const router = express.Router();
+  router.use(authMiddleware);
 
-  try {
-    const pointsEarned = Math.floor(totalAmount);
-    const [receipt] = await Promise.all([
-      prisma.receipt.create({
-        data: {
-          userId: req.userId,
-          storeName,
-          category,
-          totalAmount,
-          items,
-          pointsEarned,
-        },
-      }),
-      prisma.user.update({
-        where: { id: req.userId },
-        data: { loyaltyPoints: { increment: pointsEarned } },
-      }),
-    ]);
-    res.status(201).json(receipt);
-  } catch (err) {
-    console.error('[receipts/post]', err);
-    res.status(500).json({ error: 'Failed to create receipt.' });
-  }
-});
+  // POST /api/receipts — create a single receipt (tests only)
+  // Body: { storeName (1-60), category (1-40), totalAmount (number, 0 < x <= 10000),
+  // items (0-100 strings of at most 200 chars) }. See parseUserReceipt.
+  router.post('/', async (req, res) => {
+    const parsed = parseUserReceipt(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const { storeName, category, totalAmount, items } = parsed;
 
-// POST /api/receipts/seed — seed demo receipts for this user (idempotent)
-router.post('/seed', async (req, res) => {
-  try {
-    const existing = await prisma.receipt.count({ where: { userId: req.userId } });
-    if (existing > 0) {
-      return res.json({ seeded: false, message: 'Already has receipts.' });
-    }
-
-    const totalPoints = DEMO_RECEIPTS.reduce((sum, r) => sum + r.pointsEarned, 0);
-
-    await prisma.$transaction([
-      ...DEMO_RECEIPTS.map((r) =>
+    try {
+      const pointsEarned = Math.floor(totalAmount);
+      const [receipt] = await Promise.all([
         prisma.receipt.create({
-          data: { userId: req.userId, ...r },
-        })
-      ),
-      prisma.user.update({
-        where: { id: req.userId },
-        data: { loyaltyPoints: { increment: totalPoints } },
-      }),
-    ]);
+          data: {
+            userId: req.userId,
+            storeName,
+            category,
+            totalAmount,
+            items,
+            pointsEarned,
+          },
+        }),
+        prisma.user.update({
+          where: { id: req.userId },
+          data: { loyaltyPoints: { increment: pointsEarned } },
+        }),
+      ]);
+      res.status(201).json(receipt);
+    } catch (err) {
+      console.error('[receipts/post]', err);
+      res.status(500).json({ error: 'Failed to create receipt.' });
+    }
+  });
 
-    res.json({ seeded: true, count: DEMO_RECEIPTS.length });
-  } catch (err) {
-    console.error('[receipts/seed]', err);
-    res.status(500).json({ error: 'Failed to seed receipts.' });
-  }
-});
+  // POST /api/receipts/seed — seed demo receipts for this user (idempotent)
+  router.post('/seed', async (req, res) => {
+    try {
+      const existing = await prisma.receipt.count({ where: { userId: req.userId } });
+      if (existing > 0) {
+        return res.json({ seeded: false, message: 'Already has receipts.' });
+      }
 
-module.exports = router;
+      const totalPoints = DEMO_RECEIPTS.reduce((sum, r) => sum + r.pointsEarned, 0);
+
+      await prisma.$transaction([
+        ...DEMO_RECEIPTS.map((r) =>
+          prisma.receipt.create({
+            data: { userId: req.userId, ...r },
+          })
+        ),
+        prisma.user.update({
+          where: { id: req.userId },
+          data: { loyaltyPoints: { increment: totalPoints } },
+        }),
+      ]);
+
+      res.json({ seeded: true, count: DEMO_RECEIPTS.length });
+    } catch (err) {
+      console.error('[receipts/seed]', err);
+      res.status(500).json({ error: 'Failed to seed receipts.' });
+    }
+  });
+
+  return router;
+};

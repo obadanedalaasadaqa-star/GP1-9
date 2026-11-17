@@ -175,8 +175,8 @@ same `[from, to)` rule as `/api/user/stats`, so the bars match Trends.
   category per month** (table `nexus_budget_alerts`); one receipt that jumps
   past 100% gives a single 100% alert. Changing or removing a budget resets that
   category's alerts for the current month (the same amount resets nothing).
-  Manual (`POST /api/receipts`) and seeded receipts count toward the bars but
-  never trigger an alert.
+  Manual and seeded receipts (tests and `demo:reset` only) count toward the
+  bars but never trigger an alert.
 - **Time zone:** the app sends its offset (`tzOffsetMinutes`) when it saves a
   budget or a setting; the server keeps it per user (default 180, Jordan) for
   "this month" in alerts.
@@ -326,10 +326,10 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 | GET | `/api/user/me` | Get current user profile |
 | PATCH | `/api/user/me` | Update first/last name and email (a new email needs `currentPassword`) |
 | PATCH | `/api/user/security` | `{ loginTwoFactor, currentPassword? }` → the user (on needs a verified email, off needs the password) |
-| GET | `/api/user/receipts` | Get last 50 receipts |
+| PATCH | `/api/user/password` | `{ currentPassword, newPassword }` → `{ message, token }` |
+| POST | `/api/user/logout-all` | Sign out on every device, this one included (no body) |
+| GET | `/api/user/receipts` | Last 50 receipts, or the newest 500 in `?from&to` |
 | GET | `/api/user/stats?bounds=…` | Spending totals per period, category and store (Trends) |
-| POST | `/api/receipts` | Create a new receipt |
-| POST | `/api/receipts/seed` | Seed demo receipts (idempotent) |
 | GET | `/api/store/me` | Store login: check a store key |
 | POST | `/api/store/receipts` | Store sends a receipt to a customer serial |
 | GET | `/api/ai/insight?bounds=…` | AI summary + tip for this month (same bounds as stats; cached 24 h) |
@@ -345,8 +345,43 @@ Terminal 2 → cd flutter_app && flutter run --dart-define=API_BASE_URL=http://<
 time zone (e.g. `2026-10-31T21:00:00.000Z`), oldest first. Each neighbour pair
 is one period, from inclusive and to exclusive (the same rule as `?from&to`).
 
-`/api/user/*`, `/api/receipts*`, `/api/ai/*` and `/api/budgets*` require an `Authorization: Bearer <token>`
+`/api/user/*`, `/api/ai/*` and `/api/budgets*` require an `Authorization: Bearer <token>`
 header. `/api/store/*` requires an `X-Store-Key: nxs_sk_…` header instead.
+
+`POST /api/receipts` and `POST /api/receipts/seed` exist **only in tests**
+(`createApp({ testRoutes: true })`, used by `makeApp`). The running server has
+neither (404), so nobody can add receipts or points to their own account; real
+receipts come from stores (`POST /api/store/receipts`).
+
+**Sessions.** Every session token carries the user's session version. A
+password change, turning two-step sign-in on, an email change and
+`POST /api/user/logout-all` raise it, so every older token gets 401 and its
+live connection is dropped. The first three answer with a new `token` for the
+device that made the change (the app saves it); sign out everywhere signs that
+device out too. Tokens from before Phase 8 count as version 0 and keep working
+until one of these happens. A normal Log out does not end the session on the
+server.
+
+**AI and email limits.** Ask AI, new insights and new report summaries need a
+verified email (numbers and saved texts do not). New insights are capped at 20
+per user per UTC day. An email change in `PATCH /api/user/me` waits 60 s after
+the last code and shares the 5-codes-an-hour limit with `/email/send-code`; a
+code only verifies the address it was sent to. Names are cut of control
+characters and capped at 50 characters. New accounts' emails are stored
+trimmed and lowercased; login also finds older mixed-case rows.
+
+**Startup guard.** On Render (`RENDER=true`) or with `NODE_ENV=production`
+the server refuses to start when `JWT_SECRET` is missing or shorter than 32
+characters. Do not add `NODE_ENV=production` on Render just for this.
+
+**Checking `TRUST_PROXY`** (the IP rate limiters; IPv6 is grouped by /64): the
+`[rate-limit] login blocked ip=` line is only written when a request is
+blocked, so force one block. Send 11 `POST /api/auth/login` with an address
+that has no account (e.g. `test_proxycheck@nexus.test`), any password and the
+header `X-Forwarded-For: 203.0.113.7`; the 11th gets 429. The log line must
+show your real public IP: `203.0.113.7` means `TRUST_PROXY` is too high, a
+private or Render-internal address means too low. Login from that IP is then
+blocked for 15 minutes for every account (the demo too); a restart clears it.
 
 Live updates: the app opens a Socket.IO connection to the server root with
 `auth: { token }` and receives `receipt:new` events in its own room, and

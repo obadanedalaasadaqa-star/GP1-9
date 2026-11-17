@@ -4,6 +4,8 @@ const { randomUUID } = require('crypto');
 const prisma = require('../lib/prisma');
 const { passwordError } = require('../lib/password');
 const { sendEmailCode, resendWaitSeconds } = require('../lib/verification');
+const { normalizeEmail, emailError, findUserByEmail, emailTaken } = require('../lib/email');
+const { cleanName, nameError } = require('../lib/names');
 const { signSession, signChallenge, CHALLENGE_TTL_SECONDS } = require('../lib/token');
 const {
   isLoginTwoFactorAllowed, loginChallenge, loadChallengeUser, sendLoginCode, checkLoginCode,
@@ -43,23 +45,27 @@ module.exports = function authRoutes(limiters) {
 
   // POST /api/auth/register
   router.post('/register', limiters.register, async (req, res) => {
-    const { email, password } = req.body ?? {};
-    // Non-strings count as missing (a number's .trim() would throw before the try).
-    const text = (v) => (typeof v === 'string' ? v.trim() : '');
-    const firstName = text(req.body?.firstName);
-    const lastName  = text(req.body?.lastName);
+    const { password } = req.body ?? {};
+    // Stored trimmed and lowercased. Non-strings count as missing.
+    const email = normalizeEmail(req.body?.email);
+    // Names end up in emails: control characters are stripped, length capped.
+    const firstName = cleanName(req.body?.firstName);
+    const lastName  = cleanName(req.body?.lastName);
 
-    if (typeof email !== 'string' || !email || !password || !firstName || !lastName) {
+    if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({
         error: 'First name, last name, email, and password are required.',
       });
     }
+    if (emailError(email)) return res.status(400).json({ error: emailError(email) });
+    const nameProblem = nameError(firstName, lastName);
+    if (nameProblem) return res.status(400).json({ error: nameProblem });
     const pwError = passwordError(password);
     if (pwError) return res.status(400).json({ error: pwError });
 
     try {
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) return res.status(409).json({ error: 'Email already registered.' });
+      // Any letter case: an older row may have been stored with capitals.
+      if (await emailTaken(email)) return res.status(409).json({ error: 'Email already registered.' });
 
       const hashed = await bcrypt.hash(password, 12);
       const serialNumber = generateSerial();
@@ -74,8 +80,10 @@ module.exports = function authRoutes(limiters) {
       });
 
       await sendEmailCode(user);
-      res.status(201).json({ token: signSession(user.id), user });
+      res.status(201).json({ token: signSession(user.id, 0), user }); // a new row starts at version 0
     } catch (err) {
+      // Two registers with the same email at the same time.
+      if (err.code === 'P2002') return res.status(409).json({ error: 'Email already registered.' });
       console.error('[register]', err);
       res.status(500).json({ error: 'Registration failed. Please try again.' });
     }
@@ -94,7 +102,9 @@ module.exports = function authRoutes(limiters) {
     const DUMMY = '$2a$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
     try {
-      const user = await prisma.user.findUnique({ where: { email } });
+      // Exact match first (as stored), then a unique case-insensitive one. No
+      // format check here, so an older address like a@b still signs in.
+      const user = await findUserByEmail(email);
       const valid = await bcrypt.compare(password, user?.password ?? DUMMY);
       if (!user || !valid) return res.status(401).json({ error: 'Invalid email or password.' });
 
@@ -110,7 +120,7 @@ module.exports = function authRoutes(limiters) {
         });
       }
 
-      res.json({ token: signSession(user.id), user: safeUserOf(user) });
+      res.json({ token: signSession(user.id, user.tokenVersion), user: safeUserOf(user) });
     } catch (err) {
       console.error('[login]', err);
       res.status(500).json({ error: 'Login failed. Please try again.' });
@@ -162,7 +172,7 @@ module.exports = function authRoutes(limiters) {
       if (!user) return;
       const problem = await checkLoginCode(user.id, code);
       if (problem) return res.status(400).json({ error: problem });
-      res.json({ token: signSession(user.id), user: safeUserOf(user) });
+      res.json({ token: signSession(user.id, user.tokenVersion), user: safeUserOf(user) });
     } catch (err) {
       console.error('[login/verify]', err);
       res.status(500).json({ error: 'Login failed. Please try again.' });

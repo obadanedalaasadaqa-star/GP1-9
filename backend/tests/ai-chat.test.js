@@ -3,7 +3,7 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const Anthropic = require('@anthropic-ai/sdk');
 const prisma = require('../src/lib/prisma');
-const { makeApp, registerUser, cleanup } = require('./helpers');
+const { makeApp, registerUser, verifyUser, cleanup } = require('./helpers');
 const { makeFakeAi, reply, text, toolUse } = require('./fakeAi');
 const { REFUSAL_TEXT } = require('../src/lib/aiChat');
 const { takeQuota, recordTokens } = require('../src/lib/aiUsage');
@@ -58,6 +58,7 @@ describe('POST /api/ai/chat', () => {
   test('C-2 tools only read the caller\'s receipts', async () => {
     const a = await seededUser(app);
     const b = await registerUser(app);
+    await verifyUser(b.user.id); // asking AI needs a verified email
     await request(app).post('/api/receipts').set(auth(b.token))
       .send({ storeName: 'OtherUserStore', category: 'Food', totalAmount: 77.77, items: ['x'] });
     const listThenAnswer = () => {
@@ -309,5 +310,25 @@ describe('POST /api/ai/chat', () => {
     await expect(recordTokens(u.user.id, 'bogus', { input: 1, output: 1 })).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith('[ai/usage]', 'bad usage kind');
     await expect(takeQuota(u.user.id, 'bogus', 30)).rejects.toThrow('bad usage kind');
+  }, SLOW);
+});
+
+// Audit L3: asking AI needs a verified email (the free answers do not).
+describe('POST /api/ai/chat: verified email', () => {
+  test('C-22 unverified with receipts: 403, Claude is never called, no slot', async () => {
+    const u = await seededUser(app, { verified: false });
+    const res = await askQ(u.token);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Verify your email to use Ask AI.' });
+    expect(ai.create).not.toHaveBeenCalled();
+    expect(await usageRow(u.user.id, 'chat')).toBeNull();
+  }, SLOW);
+
+  test('C-23 unverified with no receipts: the free answer (200)', async () => {
+    const u = await registerUser(app);
+    const res = await askQ(u.token);
+    expect(res.status).toBe(200);
+    expect(res.body.toolsUsed).toEqual([]);
+    expect(ai.create).not.toHaveBeenCalled();
   }, SLOW);
 });
