@@ -115,6 +115,7 @@ void main() {
       sent.add(req);
       return http.Response(jsonEncode({...userJson(email: 'a@b'), 'firstName': 'Sami', 'name': 'Sami Ali'}), 200);
     };
+    await tapVisible(tester, find.text('Edit name and email')); // the form has its own screen
     await run(() async {
       await tester.enterText(find.byType(TextFormField).first, 'Sami');
       await tester.pump();
@@ -130,6 +131,7 @@ void main() {
 
   testWidgets('the same email in another case is not a change (no password field)', (tester) async {
     await pumpProfile(tester);
+    await tapVisible(tester, find.text('Edit name and email')); // the form has its own screen
     await run(() async {
       await tester.enterText(find.widgetWithText(TextFormField, 'a@nexus.test'), ' A@Nexus.Test ');
       await tester.pump();
@@ -144,6 +146,7 @@ void main() {
       sent++;
       return http.Response('{}', 200);
     };
+    await tapVisible(tester, find.text('Edit name and email')); // the form has its own screen
     await run(() async {
       await tester.enterText(find.widgetWithText(TextFormField, 'a@nexus.test'), 'new@b');
       await tester.pump();
