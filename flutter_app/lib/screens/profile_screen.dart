@@ -263,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(user.name,
+                                Text(_titleCase(user.name),
                                   maxLines: 1, overflow: TextOverflow.ellipsis,
                                   style: NxType.display(22, color: Colors.white)),
                                 Text(user.email,
@@ -336,20 +336,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _card(
                 surface: surface, border: border,
                 children: [
-                  _sectionTitle('ACCOUNT INFO', textMuted),
-                  _row('Email', user.email,
-                    textMuted: textMuted, textPrimary: textPrimary, border: border),
-                  _emailStatusRow(user.emailVerified, textMuted: textMuted),
-                  _row('Serial number', user.serialNumber,
-                    textMuted: textMuted, textPrimary: textPrimary, border: border,
-                    valueStyle: NxType.mono(13, color: textPrimary,
-                      weight: FontWeight.w500)),
-                  _row('Loyalty points', '${formatPoints(user.loyaltyPoints)} pts',
-                    textMuted: textMuted, textPrimary: textPrimary, border: border,
-                    valueStyle: NxType.mono(13.5, color: textPrimary,
-                      weight: FontWeight.w500)),
-                  _row('Member since', _formatDate(user.createdAt),
-                    textMuted: textMuted, textPrimary: textPrimary, border: border,
+                  _sectionTitle('ACCOUNT', textMuted),
+                  // Email, serial, points and member-since are on the member
+                  // card above; only the verification status lives here.
+                  _emailStatusRow(user.emailVerified, textMuted: textMuted,
                     last: true),
                 ],
               ),
@@ -532,7 +522,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required List<Widget> children,
   }) => NxProfileCard(children: children);
 
-  Widget _emailStatusRow(bool verified, {required Color textMuted}) => Column(children: [
+  Widget _emailStatusRow(bool verified, {required Color textMuted, bool last = false}) => Column(children: [
     Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -550,7 +540,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     ),
-    const NxRowDivider(),
+    if (!last) const NxRowDivider(),
   ]);
 
   Widget _chip(IconData icon, String label, Color color) => Container(
@@ -633,34 +623,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     child: Text(t, style: NxType.label(textMuted)),
   );
 
-  Widget _row(
-    String label, String value, {
-    required Color textMuted,
-    required Color textPrimary,
-    required Color border,
-    TextStyle? valueStyle,
-    bool last = false,
-  }) =>
-    Column(children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: NxType.body(14.5,
-              weight: FontWeight.w700, color: textPrimary)),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(value,
-                textAlign: TextAlign.right,
-                overflow: TextOverflow.ellipsis,
-                style: valueStyle ?? NxType.mono(13, color: textPrimary)),
-            ),
-          ],
-        ),
-      ),
-      if (!last) const NxRowDivider(),
-    ]);
+  /// "obada sadaqa" → "Obada Sadaqa" for display (the stored name is unchanged).
+  static String _titleCase(String s) => s
+      .split(' ')
+      .map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1))
+      .join(' ');
 
   String _formatDate(DateTime d) {
     const m = ['Jan','Feb','Mar','Apr','May','Jun',
