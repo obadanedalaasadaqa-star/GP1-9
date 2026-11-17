@@ -29,6 +29,7 @@ class AppColors {
   static const cobaltSoft  = Color(0xFFDDE0FF); // text on cobalt
   static const cobaltLight = Color(0xFF8E97FF); // cobalt on ink
   static const danger   = Color(0xFFC93A1E);    // coral readable as text
+  static const coralText = Color(0xFFFF8F7A);   // coral readable as text on ink
   static const dotted   = Color(0xFFB9B5C9);    // dotted leaders, tracks
 
   // Dark mode (ink)

@@ -176,7 +176,7 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
       Text("Couldn't load the report.", style: GoogleFonts.instrumentSans(fontSize: 14, color: c.primary)),
       if (_error != null) ...[
         const SizedBox(height: 6),
-        Text(_error!, textAlign: TextAlign.center, style: GoogleFonts.instrumentSans(fontSize: 12.5, color: c.muted)),
+        Text(_error!, textAlign: TextAlign.center, style: GoogleFonts.instrumentSans(fontSize: 12.5, color: c.dark ? c.muted : AppColors.ink)),
       ],
       const SizedBox(height: 8),
       TextButton(
@@ -202,7 +202,9 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
       Text(r.range.label,
         style: NxType.display(26, color: c.primary, letterSpacing: -0.8)),
       const SizedBox(height: 2),
-      Text(reportComparedWith(r.range, r.previous), style: GoogleFonts.instrumentSans(fontSize: 12.5, color: c.muted)),
+      // On the pink page the grey caption was 3.3:1; ink reads at 9:1.
+      Text(reportComparedWith(r.range, r.previous), style: GoogleFonts.instrumentSans(fontSize: 13,
+        fontWeight: FontWeight.w600, color: c.dark ? c.muted : AppColors.ink)),
       const SizedBox(height: 16),
 
       // 2. AI summary

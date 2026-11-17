@@ -29,7 +29,8 @@ class Nx {
   /// Primary button fill and its text.
   Color get buttonFill => dark ? AppColors.lime : AppColors.ink;
   Color get onButton   => dark ? AppColors.ink : Colors.white;
-  Color get danger => dark ? AppColors.coral : AppColors.danger;
+  /// Error / over-budget text: 4.5:1 or better on both themes' cards.
+  Color get danger => dark ? AppColors.coralText : AppColors.danger;
 }
 
 /// The three type roles: Bricolage Grotesque for headings and amounts,
