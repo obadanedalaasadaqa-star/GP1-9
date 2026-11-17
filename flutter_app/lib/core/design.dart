@@ -394,18 +394,23 @@ class NxBackButton extends StatelessWidget {
       this.icon = Icons.arrow_back_rounded});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tooltip,
-        child: Pressable(
-          onTap: onTap ?? () => Navigator.of(context).maybePop(),
-          child: Container(
-            width: 44, height: 44,
-            decoration: const BoxDecoration(
-                color: AppColors.ink, shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
+  Widget build(BuildContext context) {
+    // Ink on paper; white on ink, where an ink circle would disappear.
+    final dark = Nx.of(context).dark;
+    return Tooltip(
+      message: tooltip,
+      child: Pressable(
+        onTap: onTap ?? () => Navigator.of(context).maybePop(),
+        child: Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+              color: dark ? Colors.white : AppColors.ink,
+              shape: BoxShape.circle),
+          child: Icon(icon, color: dark ? AppColors.ink : Colors.white, size: 22),
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// Small rounded chip; [filled] for the selected state.
