@@ -131,7 +131,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                 if (list != null)
                   Text(list.label,
                     style: NxType.mono(13, color: onPage,
-                      weight: FontWeight.w500, letterSpacing: 1.5)),
+                      weight: FontWeight.w500)),
               ],
             ),
             const SizedBox(height: 18),

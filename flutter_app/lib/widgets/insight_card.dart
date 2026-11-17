@@ -150,7 +150,7 @@ class InsightCardState extends State<InsightCard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(color: ink, borderRadius: BorderRadius.circular(6)),
-            child: Text('TIP', style: NxType.mono(10.5, color: Colors.white,
+            child: Text('TIP', style: NxType.mono(12, color: Colors.white,
               weight: FontWeight.w500, letterSpacing: 1)),
           ),
           const SizedBox(width: 10),
@@ -162,7 +162,7 @@ class InsightCardState extends State<InsightCard> {
           insight.createdAt == null
               ? 'AI-generated'
               : 'AI-generated · updated ${OfflineBanner.ago(insight.createdAt!)}',
-          style: NxType.mono(11, color: muted)),
+          style: NxType.mono(12, color: muted)),
       ]);
     }
 
@@ -180,7 +180,7 @@ class InsightCardState extends State<InsightCard> {
           shadowColor: nx.dark ? AppColors.lime : ink,
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('This month', style: NxType.label(muted)),
+            Text('This month', style: NxType.mono(12, color: muted, weight: FontWeight.w500)),
             const SizedBox(height: 10),
             body,
             if (_updateFailed && !_offline && insight != null) ...[
@@ -227,12 +227,12 @@ class InsightCardState extends State<InsightCard> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('AI insight', style: NxType.mono(11, color: ink, letterSpacing: 1.5)),
+              Text('AI insight', style: NxType.mono(12, color: ink, weight: FontWeight.w500)),
               const SizedBox(height: 4),
               line,
               if (_offline && insight != null) ...[
                 const SizedBox(height: 6),
-                Text('Offline · saved insight', style: NxType.mono(11, color: ink)),
+                Text('Offline · saved insight', style: NxType.mono(12, color: ink)),
               ],
             ]),
           ),

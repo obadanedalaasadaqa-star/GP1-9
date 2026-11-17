@@ -87,7 +87,7 @@ class BudgetBar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(captionOf(status),
-            style: NxType.mono(11.5,
+            style: NxType.mono(12,
               weight: status.level == BudgetLevel.ok ? FontWeight.w400 : FontWeight.w500,
               color: status.level == BudgetLevel.ok ? nx.muted
                   : (over ? nx.danger : (nx.dark ? AppColors.amber : AppColors.ink)))),

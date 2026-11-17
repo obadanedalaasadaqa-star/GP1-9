@@ -240,7 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: Colors.white, letterSpacing: 1)),
                           const Spacer(),
                           Text('MEMBER SINCE ${_formatDate(user.createdAt).toUpperCase()}',
-                            style: NxType.mono(10.5, color: AppColors.cobaltSoft,
+                            style: NxType.mono(12, color: AppColors.cobaltSoft,
                               letterSpacing: 1)),
                         ],
                       ),

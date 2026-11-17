@@ -712,7 +712,7 @@ class _CompactReceiptTile extends StatelessWidget {
                     meta,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: NxType.mono(11.5, color: nx.muted),
+                    style: NxType.mono(12, color: nx.muted),
                   ),
                 ],
               ),
@@ -731,7 +731,7 @@ class _CompactReceiptTile extends StatelessWidget {
                   ),
                   TextSpan(
                     text: ' JD',
-                    style: NxType.mono(11, color: nx.muted),
+                    style: NxType.mono(12, color: nx.muted),
                   ),
                 ],
               ),

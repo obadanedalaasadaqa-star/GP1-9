@@ -55,9 +55,10 @@ class NxType {
         fontSize: size, fontWeight: weight, color: color,
         letterSpacing: letterSpacing);
 
-  /// Small spaced mono label, like the header line on a till slip.
+  /// Small spaced mono label, like the header line on a till slip. Use it
+  /// for UPPERCASE text only: tracking lowercase letters hurts reading.
   static TextStyle label(Color color) =>
-      mono(11, color: color, letterSpacing: 1.5);
+      mono(12, color: color, letterSpacing: 1.5);
 }
 
 // ── Receipt edge ────────────────────────────────────────────────────────────

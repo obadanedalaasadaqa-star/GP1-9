@@ -97,7 +97,7 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
                                             height: 1.1)),
                                         const SizedBox(height: 2),
                                         Text(r.category,
-                                          style: NxType.mono(11.5, color: muted,
+                                          style: NxType.mono(12, color: muted,
                                             letterSpacing: 0.5)),
                                       ],
                                     ),
@@ -118,7 +118,7 @@ class _NewReceiptSheetState extends State<NewReceiptSheet> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 4),
                                     child: Text('and $more more',
-                                      style: NxType.mono(11.5, color: muted)),
+                                      style: NxType.mono(12, color: muted)),
                                   ),
                               ],
                               const SizedBox(height: 10),

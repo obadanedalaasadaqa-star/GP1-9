@@ -433,7 +433,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               child: Text(
                 '${_monthsLong[current.from.month - 1]} so far '
                 '${trendsVsLabel(previousMonth: _monthsLong[previous.from.month - 1], monthInProgress: true)}',
-                style: NxType.mono(11.5, color: AppColors.textMuted)),
+                style: NxType.mono(12, color: AppColors.textMuted)),
             ),
           _card(nx, child: Column(
             children: [
@@ -466,7 +466,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                             weight: FontWeight.w500)),
                         if (previous != null)
                           Text('${formatJd(c.previous)} JD',
-                            style: NxType.mono(11, color: nx.muted)),
+                            style: NxType.mono(12, color: nx.muted)),
                       ],
                     ),
                     const SizedBox(width: 10),
@@ -501,7 +501,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                           ? 'No receipts this month'
                           : '${formatJd(current.topStore!.total)} JD · '
                             '${current.topStore!.count} visit${current.topStore!.count == 1 ? '' : 's'}',
-                      style: NxType.mono(11.5, color: nx.muted)),
+                      style: NxType.mono(12, color: nx.muted)),
                   ],
                 ))),
                 const SizedBox(width: 12),
@@ -542,7 +542,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final savedLine = Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text('Saved on this phone',
-        style: NxType.mono(11.5, color: AppColors.textMuted)),
+        style: NxType.mono(12, color: AppColors.textMuted)),
     );
     if (list.budgets.isEmpty) {
       return _card(nx, child: Column(
@@ -576,7 +576,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
           if (_budgetsSavedAt != null) ...[
             const SizedBox(height: 6),
             Text('Saved on this phone',
-              style: NxType.mono(11.5, color: nx.muted)),
+              style: NxType.mono(12, color: nx.muted)),
           ],
         ],
       ));
@@ -664,7 +664,7 @@ class _MonthChart extends StatelessWidget {
     return Column(
       children: [
         SizedBox(
-          height: chartHeight + 22,
+          height: chartHeight + 28, // value label (12pt mono) + gap above the tallest bar
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -676,7 +676,7 @@ class _MonthChart extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Text(formatJd(periods[i].total, decimals: 0),
-                          style: NxType.mono(11,
+                          style: NxType.mono(12,
                             weight: FontWeight.w500,
                             color: i == periods.length - 1
                                 ? AppColors.lime : Colors.white)),
@@ -711,7 +711,7 @@ class _MonthChart extends StatelessWidget {
               Expanded(
                 child: Text(months[periods[i].from.month - 1],
                   textAlign: TextAlign.center,
-                  style: NxType.mono(11,
+                  style: NxType.mono(12,
                     weight: i == periods.length - 1 ? FontWeight.w500 : FontWeight.w400,
                     color: i == periods.length - 1
                         ? AppColors.lime : AppColors.textMuted)),

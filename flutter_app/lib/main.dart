@@ -718,7 +718,7 @@ class _QrStep extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(n, style: NxType.mono(11, color: AppColors.ink)),
+            Text(n, style: NxType.mono(12, color: AppColors.ink)),
             const SizedBox(height: 4),
             Text(text, style: NxType.body(13, color: AppColors.ink,
               weight: FontWeight.w700, height: 1.2)),

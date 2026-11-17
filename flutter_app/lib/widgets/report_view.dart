@@ -339,7 +339,7 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
   }
 
   Widget _aiSummary(ReportAi ai, _C c) {
-    final header = Text('AI summary', style: NxType.mono(11, color: c.muted, letterSpacing: 1.5));
+    final header = Text('AI summary', style: NxType.mono(12, color: c.muted, weight: FontWeight.w500));
     final Widget body = switch (ai.status) {
       ReportAiStatus.ready => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(ai.headline, style: NxType.display(19, color: c.primary,
@@ -357,7 +357,7 @@ class _ReportViewState extends State<ReportView> with AutomaticKeepAliveClientMi
                   decoration: BoxDecoration(
                     color: c.dark ? AppColors.lime : AppColors.ink,
                     borderRadius: BorderRadius.circular(5)),
-                  child: Text('TIP', style: NxType.mono(9.5,
+                  child: Text('TIP', style: NxType.mono(12,
                     color: c.dark ? AppColors.ink : Colors.white,
                     weight: FontWeight.w500, letterSpacing: 1)),
                 ),

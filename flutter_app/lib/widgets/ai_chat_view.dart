@@ -160,7 +160,7 @@ class _AiChatViewState extends State<AiChatView> {
                               border: InputBorder.none,
                               isDense: true,
                               counterText: runes >= 450 ? '$runes/${AiChatView.maxQuestion}' : null,
-                              counterStyle: NxType.mono(11, color: textMuted),
+                              counterStyle: NxType.mono(12, color: textMuted),
                             ),
                           ),
                         ),
