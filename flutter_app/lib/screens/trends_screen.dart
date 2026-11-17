@@ -200,7 +200,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       Pressable(
         onTap: onTap,
         child: Container(
-          width: 42, height: 42,
+          width: 44, height: 44,
           decoration: BoxDecoration(
             color: filled ? AppColors.lime : Colors.transparent,
             shape: BoxShape.circle,
@@ -529,10 +529,15 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final edit = GestureDetector(
       key: const ValueKey('trends-budgets-edit'),
       onTap: _openBudgets,
-      child: Text(list.budgets.isEmpty ? 'Set up' : 'Edit',
-        style: NxType.body(14, weight: FontWeight.w700, color: AppColors.lime)
-          .copyWith(decoration: TextDecoration.underline,
-            decorationColor: AppColors.lime)),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        // 44pt tap target around the short link.
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        child: Text(list.budgets.isEmpty ? 'Set up' : 'Edit',
+          style: NxType.body(14, weight: FontWeight.w700, color: AppColors.lime)
+            .copyWith(decoration: TextDecoration.underline,
+              decorationColor: AppColors.lime)),
+      ),
     );
     final savedLine = Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -556,11 +561,15 @@ class _TrendsScreenState extends State<TrendsScreen> {
               GestureDetector(
                 key: const ValueKey('trends-budgets-edit'),
                 onTap: _openBudgets,
-                child: Text('Set up',
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                  child: Text('Set up',
                   style: NxType.body(14, weight: FontWeight.w700,
                     color: nx.accent).copyWith(
                       decoration: TextDecoration.underline,
                       decorationColor: nx.accent)),
+                ),
               ),
             ],
           ),

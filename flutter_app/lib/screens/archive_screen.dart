@@ -192,7 +192,7 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
                 child: Pressable(
                   onTap: _load,
                   child: Container(
-                    width: 40, height: 40,
+                    width: 44, height: 44,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: nx.line, width: 2)),

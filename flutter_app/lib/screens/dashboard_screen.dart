@@ -637,8 +637,9 @@ class _SectionHead extends StatelessWidget {
         if (action != null)
           GestureDetector(
             onTap: onAction,
+            behavior: HitTestBehavior.opaque, // the padding is tappable too
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4), // 44pt tap target
               child: Text(
                 action!,
                 style:
