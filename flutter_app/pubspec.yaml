@@ -25,7 +25,8 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: false
-  ios: true
+  # iOS icon now comes from GP2/design/app-icon (concept A, Rising slip); don't regenerate it here.
+  ios: false
   image_path: "assets/icons/app_icon.png"
   ios_min_target: "13.0"
   remove_alpha_ios: true
