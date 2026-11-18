@@ -10,6 +10,7 @@ import 'package:nexus_app/core/ai_chat_session.dart';
 import 'package:nexus_app/core/auth_provider.dart';
 import 'package:nexus_app/core/theme_provider.dart';
 import 'package:nexus_app/core/user_model.dart';
+import 'package:nexus_app/main.dart' show NexusApp;
 import 'package:nexus_app/screens/ai_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -66,7 +67,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider.value(value: auth),
       ],
-      child: MaterialApp(home: session == null
+      child: MaterialApp(builder: NexusApp.appBuilder, home: session == null
           ? home
           : ChangeNotifierProvider<AiChatSession>.value(value: session, child: home)),
     ));
@@ -222,5 +223,89 @@ void main() {
       await tester.pumpAndSettle();
     });
     expect(shell.isDisposed, isFalse);
+  });
+
+  group('T13 keyboard', () {
+    final ios = TargetPlatformVariant.only(TargetPlatform.iOS);
+    bool inputFocused(WidgetTester tester) => tester
+        .widget<EditableText>(find.descendant(of: find.byType(TextField), matching: find.byType(EditableText)))
+        .focusNode
+        .hasFocus;
+
+    testWidgets('Send closes the keyboard and asks once', (tester) async {
+      await run(() async {
+        await pumpHome(tester, tab: AiTab.ask);
+        await tester.enterText(find.byType(TextField), 'How much did I spend this month?');
+        await tester.pump();
+        expect(inputFocused(tester), isTrue);
+        await tester.tap(find.byTooltip('Send'));
+        await tester.pump();
+        expect(inputFocused(tester), isFalse);
+        expect(tester.testTextInput.isVisible, isFalse);
+        await tester.pumpAndSettle();
+      });
+      expect(chatBodies, hasLength(1));
+    }, variant: ios);
+
+    testWidgets('keyboard send and the Send button in the same frame ask once (2 in total, not 3)',
+        (tester) async {
+      await run(() async {
+        await pumpHome(tester, tab: AiTab.ask);
+        await tester.enterText(find.byType(TextField), 'First question');
+        await tester.pump();
+        await tester.tap(find.byTooltip('Send'));
+        await tester.pumpAndSettle();
+        expect(chatBodies, hasLength(1));
+
+        await tester.enterText(find.byType(TextField), 'Second question');
+        await tester.pump();
+        // No pump in between: both run before the next frame rebuilds the button.
+        await tester.testTextInput.receiveAction(TextInputAction.send);
+        await tester.tap(find.byTooltip('Send'));
+        await tester.pumpAndSettle();
+      });
+      expect(chatBodies.map((b) => b['question']), ['First question', 'Second question']);
+    }, variant: ios);
+
+    testWidgets('a tap on the chat area or a drag of the chat list closes the keyboard', (tester) async {
+      chat = (_) async => http.Response(
+          jsonEncode({'answer': List.filled(120, 'A long answer line.').join('\n'), 'toolsUsed': [], 'remainingToday': 28}),
+          200);
+      await run(() async {
+        await pumpHome(tester, tab: AiTab.ask);
+        // Empty state: a tap on its title.
+        await tester.tap(find.byType(TextField));
+        await tester.pump();
+        expect(inputFocused(tester), isTrue);
+        await tester.tap(find.text('Ask about your spending'));
+        await tester.pump();
+        expect(inputFocused(tester), isFalse);
+
+        await tester.enterText(find.byType(TextField), 'How much?');
+        await tester.pump();
+        await tester.tap(find.byTooltip('Send'));
+        await tester.pumpAndSettle();
+      });
+      // The list has scrolled to the answer, so find it from there.
+      final list = find.ancestor(of: find.textContaining('A long answer line.'), matching: find.byType(ListView)).first;
+      expect(tester.state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first).position.maxScrollExtent,
+          greaterThan(0));
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(inputFocused(tester), isTrue);
+      await tester.tapAt(tester.getRect(list).topCenter + const Offset(0, 4));
+      await tester.pump();
+      expect(inputFocused(tester), isFalse);
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(inputFocused(tester), isTrue);
+      await tester.drag(list, const Offset(0, 200));
+      await tester.pumpAndSettle();
+      expect(inputFocused(tester), isFalse);
+      expect(chatBodies, hasLength(1));
+    }, variant: ios);
   });
 }

@@ -165,6 +165,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       backgroundColor: pageBg,
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

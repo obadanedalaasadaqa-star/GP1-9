@@ -70,6 +70,8 @@ class _AiChatViewState extends State<AiChatView> {
   void _send(AiChatSession chat) {
     final text = widget.controller.text.trim();
     if (text.isEmpty || chat.sending) return;
+    // Close the keyboard so the answer has the room to show.
+    FocusManager.instance.primaryFocus?.unfocus();
     widget.controller.clear();
     chat.ask(text);
   }
@@ -112,6 +114,7 @@ class _AiChatViewState extends State<AiChatView> {
               ? _empty(nx.dark ? Colors.white : AppColors.ink, onPage, surface, border)
               : ListView.builder(
                   controller: _scroll,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   itemCount: count,
                   itemBuilder: (_, i) => i == messages.length
@@ -198,6 +201,7 @@ class _AiChatViewState extends State<AiChatView> {
   }
 
   Widget _empty(Color textPrimary, Color textMuted, Color surface, Color border) => ListView(
+    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
     padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
     children: [
       Text('Ask about your spending',

@@ -21,6 +21,7 @@ import 'screens/profile_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/verify_email_screen.dart';
 import 'widgets/bottom_nav.dart';
+import 'widgets/dismiss_keyboard.dart';
 import 'widgets/live_sheets.dart';
 
 void main() {
@@ -122,6 +123,11 @@ class NexusApp extends StatelessWidget {
     );
   }
 
+  /// Sits above the Navigator: a tap outside any field closes the keyboard on
+  /// every screen, dialog and sheet.
+  static Widget appBuilder(BuildContext context, Widget? child) =>
+      DismissKeyboard(child: child ?? const SizedBox.shrink());
+
   @override
   Widget build(BuildContext context) {
     final themeMode = context.watch<ThemeProvider>().themeMode;
@@ -131,6 +137,7 @@ class NexusApp extends StatelessWidget {
       themeMode: themeMode,
       theme: _buildTheme(dark: false),
       darkTheme: _buildTheme(dark: true),
+      builder: appBuilder,
       home: const _SplashScreen(),
     );
   }

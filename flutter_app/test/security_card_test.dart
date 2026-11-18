@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nexus_app/core/auth_provider.dart';
 import 'package:nexus_app/core/theme_provider.dart';
+import 'package:nexus_app/main.dart' show NexusApp;
 import 'package:nexus_app/screens/verify_email_screen.dart';
 import 'package:nexus_app/widgets/security_card.dart';
 import 'package:provider/provider.dart';
@@ -44,6 +45,7 @@ void main() {
           ChangeNotifierProvider(create: (_) => auth = AuthProvider()),
         ],
         child: MaterialApp(
+          builder: NexusApp.appBuilder,
           home: Scaffold(
             body: Builder(builder: (context) => context.watch<AuthProvider>().user == null
                 ? const SizedBox()
@@ -153,4 +155,25 @@ void main() {
     expect(auth.user!.loginTwoFactor, isFalse);
     expect(find.textContaining('Failed to save settings.'), findsOneWidget);
   });
+
+  testWidgets('T16 a tap on the dialog title closes the keyboard; the dialog stays and nothing is sent',
+      (tester) async {
+    await pumpCard(tester, on: true);
+    await tapSwitch(tester);
+    final pw = find.descendant(of: find.byKey(const ValueKey('2fa-password')), matching: find.byType(EditableText));
+    await run(() async {
+      await tester.enterText(find.byKey(const ValueKey('2fa-password')), 'Nexus@2026');
+      await tester.pump();
+    });
+    expect(tester.widget<EditableText>(pw).focusNode.hasFocus, isTrue);
+    await run(() async {
+      await tester.tap(find.text('Turn off two-step sign-in?'));
+      await tester.pumpAndSettle();
+    });
+    expect(tester.widget<EditableText>(pw).focusNode.hasFocus, isFalse);
+    expect(tester.widget<EditableText>(pw).obscureText, isTrue);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(securityCalls(), isEmpty);
+    expect(theSwitch(tester).value, isTrue);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 }

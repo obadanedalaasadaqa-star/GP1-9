@@ -38,6 +38,7 @@ class _EditFrame extends StatelessWidget {
         backgroundColor: nx.bg,
         body: SafeArea(
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

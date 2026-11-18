@@ -9,6 +9,7 @@ import 'package:nexus_app/core/api_client.dart';
 import 'package:nexus_app/core/auth_provider.dart';
 import 'package:nexus_app/core/login_challenge.dart';
 import 'package:nexus_app/core/theme_provider.dart';
+import 'package:nexus_app/main.dart' show NexusApp;
 import 'package:nexus_app/screens/verify_email_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +47,7 @@ void main() {
           ChangeNotifierProvider(create: (_) => auth = AuthProvider()),
         ],
         child: MaterialApp(
+          builder: NexusApp.appBuilder,
           home: Scaffold(
             body: Builder(builder: (context) => Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -195,5 +197,58 @@ void main() {
     });
     expect(find.byType(VerifyEmailScreen), findsNothing);
     expect(auth.isLoggedIn, isFalse);
+  });
+
+  // T14: closing the number pad never sends a partial code (no attempt used).
+  group('T14 tap outside keeps the partial code', () {
+    final ios = TargetPlatformVariant.only(TargetPlatform.iOS);
+    EditableText code(WidgetTester tester) =>
+        tester.widget<EditableText>(find.descendant(of: find.byType(TextField), matching: find.byType(EditableText)));
+
+    Future<void> partialThenFinish(WidgetTester tester, {required String title, required String verifyPath}) async {
+      expect(code(tester).focusNode.hasFocus, isTrue); // focused on open
+      await run(() async {
+        await tester.enterText(find.byType(TextField), '123');
+        await tester.pump();
+        await tester.tap(find.text(title));
+        await tester.pumpAndSettle();
+      });
+      expect(code(tester).focusNode.hasFocus, isFalse);
+      expect(code(tester).controller.text, '123');
+      expect(paths().where((p) => p.endsWith(verifyPath)), isEmpty);
+
+      // Tap the six boxes (their GestureDetector wraps the hidden field).
+      await tester.tap(find.ancestor(of: find.byType(TextField), matching: find.byType(GestureDetector)).first);
+      await tester.pump();
+      expect(code(tester).focusNode.hasFocus, isTrue);
+      await run(() async {
+        tester.testTextInput.updateEditingValue(const TextEditingValue(
+            text: '123456', selection: TextSelection.collapsed(offset: 6)));
+        await tester.pumpAndSettle();
+      });
+      final verify = requests.where((r) => r.url.path.endsWith(verifyPath)).toList();
+      expect(verify, hasLength(1));
+      expect(jsonDecode(verify.single.body)['code'], '123456');
+    }
+
+    testWidgets('email mode: "Check your email"', (tester) async {
+      handler = (req) async => req.url.path.endsWith('/user/me')
+          ? http.Response(jsonEncode(userJson(verified: false)), 200)
+          : http.Response(jsonEncode({'message': 'ok', 'user': userJson()}), 200);
+      await pumpHome(tester, loggedIn: true);
+      await open(tester);
+      await partialThenFinish(tester, title: 'Check your email', verifyPath: '/user/email/verify');
+      await finish(tester);
+    }, variant: ios);
+
+    testWidgets('sign-in mode: "Confirm it\'s you"', (tester) async {
+      handler = (req) async => req.url.path.endsWith('/auth/login/verify')
+          ? http.Response(jsonEncode({'error': 'Incorrect code. 4 attempts left.'}), 400)
+          : http.Response(jsonEncode({'message': 'Code sent.'}), 200);
+      await pumpHome(tester, loggedIn: false, login: _challenge);
+      await open(tester);
+      await partialThenFinish(tester, title: "Confirm it's you", verifyPath: '/auth/login/verify');
+      await finish(tester);
+    }, variant: ios);
   });
 }

@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:nexus_app/core/budget_models.dart';
 import 'package:nexus_app/core/offline_cache.dart';
 import 'package:nexus_app/core/theme_provider.dart';
+import 'package:nexus_app/main.dart' show NexusApp;
 import 'package:nexus_app/screens/budgets_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,7 +40,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
-      child: const MaterialApp(home: BudgetsScreen()),
+      child: const MaterialApp(builder: NexusApp.appBuilder, home: BudgetsScreen()),
     ));
   }
 
@@ -218,4 +219,34 @@ void main() {
     expect(normalizeBudgetAmount('١٢٫٥٠'), '12.50');
     expect(normalizeBudgetAmount('۲۰'), '20');
   });
+
+  testWidgets('T15 a tap on the sheet title closes the number pad; the sheet stays and nothing is saved',
+      (tester) async {
+    handler = (_) async => list([]);
+    await run(() async {
+      await pumpScreen(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add a budget')); // the empty state's button
+      await tester.pumpAndSettle();
+    });
+    final amount = find.descendant(of: find.byKey(const ValueKey('budget-amount')), matching: find.byType(EditableText));
+    EditableText field() => tester.widget<EditableText>(amount);
+    expect(field().focusNode.hasFocus, isTrue); // autofocus
+
+    // "Add a budget" is also the button under the sheet: use the sheet's title.
+    await tester.tap(find.descendant(of: find.byType(BudgetEditSheet), matching: find.text('Add a budget')));
+    await tester.pumpAndSettle();
+    expect(field().focusNode.hasFocus, isFalse);
+    expect(find.byType(BudgetEditSheet), findsOneWidget);
+
+    // The − / + buttons still work (the lowest step is 5).
+    await tester.tap(find.byTooltip('More'));
+    await tester.tap(find.byTooltip('More'));
+    await tester.pump();
+    expect(field().controller.text, '10');
+    await tester.tap(find.byTooltip('Less'));
+    await tester.pump();
+    expect(field().controller.text, '5');
+    expect(requests.where((r) => r.method == 'PUT'), isEmpty);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 }

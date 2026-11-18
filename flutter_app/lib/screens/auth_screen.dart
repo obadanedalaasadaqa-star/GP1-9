@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -47,6 +49,8 @@ class _AuthScreenState extends State<AuthScreen>
   bool get _isRegister => _tabs.index == 1;
 
   Future<void> _submit() async {
+    // Close the keyboard first, so field errors and the error banner are in view.
+    FocusManager.instance.primaryFocus?.unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() { _loading = true; _error = null; });
     final auth = context.read<AuthProvider>();
@@ -83,11 +87,17 @@ class _AuthScreenState extends State<AuthScreen>
     final textMuted = nx.muted;
     final hero = isDark ? AppColors.ink : AppColors.cobalt;
     final sheet = isDark ? AppColors.surface : AppColors.paper;
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    // Hero + sheet fill the screen exactly with the keyboard down.
+    final heroHeight = 300 + padding.top;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
       backgroundColor: sheet,
+      // Only seen on iOS overscroll now (hero at the top, sheet at the bottom);
+      // the sheet corners are backed by the ColoredBox below.
       body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -99,6 +109,7 @@ class _AuthScreenState extends State<AuthScreen>
         child: StatusBarStrip(
           color: hero,
           child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
@@ -107,15 +118,16 @@ class _AuthScreenState extends State<AuthScreen>
                 children: [
                   // ── Hero ──────────────────────────────────────────────
                   Container(
+                    key: const ValueKey('auth-hero'),
                     color: hero,
-                    height: 300 + MediaQuery.of(context).padding.top,
-                    padding: EdgeInsets.fromLTRB(
-                      26, MediaQuery.of(context).padding.top, 0, 0),
+                    height: heroHeight,
+                    padding: EdgeInsets.fromLTRB(26, padding.top, 0, 0),
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
                         // A receipt slip peeking in from the corner
                         Positioned(
+                          key: const ValueKey('auth-hero-slip'),
                           right: -30, top: 26,
                           child: Transform.rotate(
                             angle: 0.32,
@@ -162,186 +174,192 @@ class _AuthScreenState extends State<AuthScreen>
                   ),
 
                   // ── Sheet ─────────────────────────────────────────────
-                  Container(
-                    constraints: BoxConstraints(
-                      minHeight: MediaQuery.of(context).size.height * 0.6),
-                    decoration: BoxDecoration(
-                      color: sheet,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                      border: Border(top: BorderSide(color: border, width: 2)),
-                    ),
-                    padding: EdgeInsets.fromLTRB(
-                      22, 22, 22, 24 + MediaQuery.of(context).padding.bottom),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Tab bar
-                        Container(
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: nx.card,
-                            borderRadius: BorderRadius.circular(25),
-                            border: Border.all(color: border, width: 2),
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: TabBar(
-                            controller: _tabs,
-                            indicator: BoxDecoration(
-                              color: isDark ? AppColors.lime : AppColors.ink,
-                              borderRadius: BorderRadius.circular(21),
+                  // Hero colour behind the sheet, so its rounded top corners
+                  // never show the page colour, whatever the scroll or keyboard.
+                  ColoredBox(
+                    color: hero,
+                    child: Container(
+                      key: const ValueKey('auth-sheet'),
+                      constraints: BoxConstraints(
+                        minHeight: math.max(0, size.height - heroHeight)),
+                      decoration: BoxDecoration(
+                        color: sheet,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                        border: Border(top: BorderSide(color: border, width: 2)),
+                      ),
+                      padding: EdgeInsets.fromLTRB(
+                        22, 22, 22, 24 + padding.bottom),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Tab bar
+                          Container(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: nx.card,
+                              borderRadius: BorderRadius.circular(25),
+                              border: Border.all(color: border, width: 2),
                             ),
-                            indicatorSize: TabBarIndicatorSize.tab,
-                            labelColor: isDark ? AppColors.ink : Colors.white,
-                            unselectedLabelColor: textPrimary,
-                            labelStyle: NxType.body(15, weight: FontWeight.w700),
-                            unselectedLabelStyle: NxType.body(15, weight: FontWeight.w700),
-                            dividerColor: Colors.transparent,
-                            splashFactory: NoSplash.splashFactory,
-                            overlayColor: WidgetStateProperty.all(Colors.transparent),
-                            tabs: const [Tab(text: 'Sign In'), Tab(text: 'Register')],
+                            padding: const EdgeInsets.all(4),
+                            child: TabBar(
+                              controller: _tabs,
+                              indicator: BoxDecoration(
+                                color: isDark ? AppColors.lime : AppColors.ink,
+                                borderRadius: BorderRadius.circular(21),
+                              ),
+                              indicatorSize: TabBarIndicatorSize.tab,
+                              labelColor: isDark ? AppColors.ink : Colors.white,
+                              unselectedLabelColor: textPrimary,
+                              labelStyle: NxType.body(15, weight: FontWeight.w700),
+                              unselectedLabelStyle: NxType.body(15, weight: FontWeight.w700),
+                              dividerColor: Colors.transparent,
+                              splashFactory: NoSplash.splashFactory,
+                              overlayColor: WidgetStateProperty.all(Colors.transparent),
+                              tabs: const [Tab(text: 'Sign In'), Tab(text: 'Register')],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 22),
+                          const SizedBox(height: 22),
 
-                        Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_isRegister) ...[
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _label('First Name', textMuted),
-                                        _field(_firstName, 'First',
-                                          isDark: isDark, border: border,
-                                          textPrimary: textPrimary, textMuted: textMuted,
-                                          validator: (v) => validateName(v, 'First name')),
-                                      ],
-                                    )),
-                                    const SizedBox(width: 12),
-                                    Expanded(child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _label('Last Name', textMuted),
-                                        _field(_lastName, 'Last',
-                                          isDark: isDark, border: border,
-                                          textPrimary: textPrimary, textMuted: textMuted,
-                                          validator: (v) => validateName(v, 'Last name')),
-                                      ],
-                                    )),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-                              _label('Email', textMuted),
-                              _field(_email, 'you@example.com',
-                                keyboard: TextInputType.emailAddress,
-                                isDark: isDark, border: border,
-                                textPrimary: textPrimary, textMuted: textMuted,
-                                // Sign-in accepts older addresses; new ones must be valid
-                                validator: (v) {
-                                  if (_isRegister) return validateEmail(v);
-                                  if (v == null || v.isEmpty) return 'Email is required';
-                                  if (!v.contains('@')) return 'Enter a valid email';
-                                  return null;
-                                }),
-                              const SizedBox(height: 16),
-                              _label('Password', textMuted),
-                              _field(_password, '••••••••',
-                                obscure: _obscure,
-                                isDark: isDark, border: border,
-                                textPrimary: textPrimary, textMuted: textMuted,
-                                suffix: IconButton(
-                                  tooltip: _obscure ? 'Show password' : 'Hide password',
-                                  icon: Icon(
-                                    _obscure ? Icons.visibility_off : Icons.visibility,
-                                    color: textMuted, size: 20),
-                                  onPressed: () => setState(() => _obscure = !_obscure),
-                                ),
-                                // Sign-in accepts older passwords; new ones must meet the rules
-                                validator: (v) => _isRegister
-                                    ? validateNewPassword(v)
-                                    : (v == null || v.isEmpty) ? 'Password is required' : null),
-                              if (_isRegister)
-                                PasswordMeter(
-                                  controller: _password,
-                                  textMuted: textMuted,
-                                  track: nx.hairline),
-
-                              if (_error != null) ...[
-                                const SizedBox(height: 16),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 11),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.coral,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: AppColors.ink, width: 2),
-                                  ),
-                                  child: Row(children: [
-                                    const Icon(Icons.error_outline,
-                                      color: AppColors.ink, size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(_error!,
-                                      style: NxType.body(13.5,
-                                        weight: FontWeight.w600, color: AppColors.ink))),
-                                  ]),
-                                ),
-                              ],
-
-                              const SizedBox(height: 22),
-                              Padding(
-                                padding: const EdgeInsets.only(right: 4, bottom: 4),
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(28),
-                                    boxShadow: const [
-                                      BoxShadow(color: AppColors.ink, offset: Offset(4, 4)),
+                          Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_isRegister) ...[
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _label('First Name', textMuted),
+                                          _field(_firstName, 'First',
+                                            isDark: isDark, border: border,
+                                            textPrimary: textPrimary, textMuted: textMuted,
+                                            validator: (v) => validateName(v, 'First name')),
+                                        ],
+                                      )),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _label('Last Name', textMuted),
+                                          _field(_lastName, 'Last',
+                                            isDark: isDark, border: border,
+                                            textPrimary: textPrimary, textMuted: textMuted,
+                                            validator: (v) => validateName(v, 'Last name')),
+                                        ],
+                                      )),
                                     ],
                                   ),
-                                  child: SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      onPressed: _loading ? null : _submit,
-                                      style: NxButtonStyle.solid(nx,
-                                        fill: AppColors.lime, text: AppColors.ink, height: 56)
-                                        .copyWith(
-                                          side: WidgetStateProperty.all(
-                                            const BorderSide(color: AppColors.ink, width: 2)),
-                                          textStyle: WidgetStateProperty.all(
-                                            NxType.display(18, weight: FontWeight.w700,
-                                              letterSpacing: -0.2))),
-                                      child: _loading
-                                          ? const SizedBox(width: 20, height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.5, color: AppColors.ink))
-                                          : Text(_isRegister ? 'Create Account' : 'Sign In'),
+                                  const SizedBox(height: 16),
+                                ],
+                                _label('Email', textMuted),
+                                _field(_email, 'you@example.com',
+                                  keyboard: TextInputType.emailAddress,
+                                  isDark: isDark, border: border,
+                                  textPrimary: textPrimary, textMuted: textMuted,
+                                  // Sign-in accepts older addresses; new ones must be valid
+                                  validator: (v) {
+                                    if (_isRegister) return validateEmail(v);
+                                    if (v == null || v.isEmpty) return 'Email is required';
+                                    if (!v.contains('@')) return 'Enter a valid email';
+                                    return null;
+                                  }),
+                                const SizedBox(height: 16),
+                                _label('Password', textMuted),
+                                _field(_password, '••••••••',
+                                  obscure: _obscure,
+                                  isDark: isDark, border: border,
+                                  textPrimary: textPrimary, textMuted: textMuted,
+                                  suffix: IconButton(
+                                    tooltip: _obscure ? 'Show password' : 'Hide password',
+                                    icon: Icon(
+                                      _obscure ? Icons.visibility_off : Icons.visibility,
+                                      color: textMuted, size: 20),
+                                    onPressed: () => setState(() => _obscure = !_obscure),
+                                  ),
+                                  // Sign-in accepts older passwords; new ones must meet the rules
+                                  validator: (v) => _isRegister
+                                      ? validateNewPassword(v)
+                                      : (v == null || v.isEmpty) ? 'Password is required' : null),
+                                if (_isRegister)
+                                  PasswordMeter(
+                                    controller: _password,
+                                    textMuted: textMuted,
+                                    track: nx.hairline),
+
+                                if (_error != null) ...[
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 11),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.coral,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: AppColors.ink, width: 2),
+                                    ),
+                                    child: Row(children: [
+                                      const Icon(Icons.error_outline,
+                                        color: AppColors.ink, size: 18),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(_error!,
+                                        style: NxType.body(13.5,
+                                          weight: FontWeight.w600, color: AppColors.ink))),
+                                    ]),
+                                  ),
+                                ],
+
+                                const SizedBox(height: 22),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4, bottom: 4),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(28),
+                                      boxShadow: const [
+                                        BoxShadow(color: AppColors.ink, offset: Offset(4, 4)),
+                                      ],
+                                    ),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        onPressed: _loading ? null : _submit,
+                                        style: NxButtonStyle.solid(nx,
+                                          fill: AppColors.lime, text: AppColors.ink, height: 56)
+                                          .copyWith(
+                                            side: WidgetStateProperty.all(
+                                              const BorderSide(color: AppColors.ink, width: 2)),
+                                            textStyle: WidgetStateProperty.all(
+                                              NxType.display(18, weight: FontWeight.w700,
+                                                letterSpacing: -0.2))),
+                                        child: _loading
+                                            ? const SizedBox(width: 20, height: 20,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2.5, color: AppColors.ink))
+                                            : Text(_isRegister ? 'Create Account' : 'Sign In'),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 14),
-                              Center(
-                                child: TextButton(
-                                  onPressed: () => _tabs.animateTo(_isRegister ? 0 : 1),
-                                  child: Text(
-                                    _isRegister
-                                        ? 'Have an account? Sign in instead'
-                                        : 'New here? Create an account',
-                                    style: NxType.body(14, color: textPrimary,
-                                      weight: FontWeight.w700).copyWith(
-                                      decoration: TextDecoration.underline,
-                                      decorationColor: textPrimary)),
+                                const SizedBox(height: 14),
+                                Center(
+                                  child: TextButton(
+                                    onPressed: () => _tabs.animateTo(_isRegister ? 0 : 1),
+                                    child: Text(
+                                      _isRegister
+                                          ? 'Have an account? Sign in instead'
+                                          : 'New here? Create an account',
+                                      style: NxType.body(14, color: textPrimary,
+                                        weight: FontWeight.w700).copyWith(
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: textPrimary)),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],

@@ -9,6 +9,7 @@ import 'package:nexus_app/core/api_client.dart';
 import 'package:nexus_app/core/auth_provider.dart';
 import 'package:nexus_app/core/realtime_service.dart';
 import 'package:nexus_app/core/theme_provider.dart';
+import 'package:nexus_app/main.dart' show NexusApp;
 import 'package:nexus_app/screens/profile_screen.dart';
 import 'package:nexus_app/screens/verify_email_screen.dart';
 import 'package:provider/provider.dart';
@@ -51,6 +52,7 @@ void main() {
           ChangeNotifierProvider(create: (_) => AuthProvider()),
         ],
         child: MaterialApp(
+          builder: NexusApp.appBuilder,
           home: Builder(builder: (context) {
             final auth = context.watch<AuthProvider>();
             if (auth.loading) return const SizedBox();
@@ -220,4 +222,33 @@ void main() {
     expect(await ApiClient.getToken(), 'rotated');
     await tester.pumpWidget(const SizedBox()); // stop the verify screen's resend timer
   });
+
+  testWidgets('T17 Change password: a tap on the title closes the keyboard, keeps the mask and sends nothing',
+      (tester) async {
+    final calls = <http.Request>[];
+    await pumpProfile(tester);
+    handler = (req) async {
+      calls.add(req);
+      return http.Response(jsonEncode(userJson()), 200);
+    };
+    await tapVisible(tester, find.text('Change password'));
+    final current = find.byType(TextFormField).at(0);
+    final editable = find.descendant(of: current, matching: find.byType(EditableText));
+    await run(() async {
+      await tester.enterText(current, 'Old@Pass2026');
+      await tester.pump();
+    });
+    expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
+    expect(tester.widget<EditableText>(editable).obscureText, isTrue);
+
+    // The Profile tile with the same words is under this route: tap the visible title.
+    await run(() async {
+      await tester.tap(find.text('Change password').hitTestable());
+      await tester.pumpAndSettle();
+    });
+    expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isFalse);
+    expect(tester.widget<EditableText>(editable).obscureText, isTrue);
+    expect(calls.where((r) => r.url.path.endsWith('/user/password')), isEmpty);
+    expect(find.text('Update Password'), findsOneWidget); // still on the form
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 }
