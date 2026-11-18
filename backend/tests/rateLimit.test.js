@@ -339,3 +339,88 @@ describe('IPv6 /64 keys', () => {
     if (other.body.user) track(other.body.user.id);
   }, SLOW);
 });
+
+// Phase 10: forgot / reset password limiters. They key on the typed email
+// (normalized, hashed), so a 429 means the same for real and unknown addresses.
+describe('forgot / reset password limiters', () => {
+  const forgot = (app, email) => request(app).post('/api/auth/forgot-password').send({ email });
+  const reset = (app, email) => request(app).post('/api/auth/reset-password')
+    .send({ email, code: '000000', newPassword: 'Nexus@2027!' });
+  const TOO_MANY_RESETS = 'Too many reset requests. Try again later.';
+
+  test('L1 per email: the 3rd request for one email is 429; another email is still 200', async () => {
+    const app = createApp({ rateLimit: { forgotPasswordEmail: { limit: 2 } }, resetFloorMs: 0 });
+    expect((await forgot(app, u1.email)).status).toBe(200);
+    expect((await forgot(app, u1.email)).status).toBe(200);
+    const blocked = await forgot(app, u1.email);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_MANY_RESETS });
+    expect((await forgot(app, u2.email)).status).toBe(200);
+  }, SLOW);
+
+  test('L2 an unknown email hits 429 at the same count, same body', async () => {
+    const app = createApp({ rateLimit: { forgotPasswordEmail: { limit: 2 } }, resetFloorMs: 0 });
+    const nobody = uniqueEmail();
+    expect((await forgot(app, nobody)).status).toBe(200);
+    expect((await forgot(app, nobody)).status).toBe(200);
+    const blocked = await forgot(app, nobody);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_MANY_RESETS });
+  }, SLOW);
+
+  test('L3 per IP across different emails', async () => {
+    const app = createApp({ rateLimit: { forgotPasswordIp: { limit: 2 } }, resetFloorMs: 0 });
+    expect((await forgot(app, uniqueEmail())).status).toBe(200);
+    expect((await forgot(app, uniqueEmail())).status).toBe(200);
+    expect((await forgot(app, uniqueEmail())).status).toBe(429);
+  }, SLOW);
+
+  test('L4 reset per email and per IP', async () => {
+    const byEmail = createApp({ rateLimit: { resetPasswordEmail: { limit: 2 } }, resetFloorMs: 0 });
+    expect((await reset(byEmail, u1.email)).status).toBe(400);
+    expect((await reset(byEmail, u1.email)).status).toBe(400);
+    const blocked = await reset(byEmail, u1.email);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: 'Too many attempts. Try again later.' });
+    expect((await reset(byEmail, u2.email)).status).toBe(400);
+
+    const byIp = createApp({ rateLimit: { resetPasswordIp: { limit: 2 } }, resetFloorMs: 0 });
+    expect((await reset(byIp, uniqueEmail())).status).toBe(400);
+    expect((await reset(byIp, uniqueEmail())).status).toBe(400);
+    expect((await reset(byIp, uniqueEmail())).status).toBe(429);
+  }, SLOW);
+
+  test('L5 the 429 log line holds no email', async () => {
+    const app = createApp({ rateLimit: { forgotPasswordEmail: { limit: 1 } }, resetFloorMs: 0 });
+    await forgot(app, u1.email);
+    expect((await forgot(app, u1.email)).status).toBe(429);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[rate-limit\] forgotPasswordEmail blocked ip=\S+ user=-$/));
+    expect(JSON.stringify(console.log.mock.calls).toLowerCase()).not.toContain(u1.email.toLowerCase());
+  }, SLOW);
+
+  test('T11 case and space variants share one bucket', async () => {
+    const app = createApp({ rateLimit: { forgotPasswordEmail: { limit: 2 } }, resetFloorMs: 0 });
+    const email = uniqueEmail();
+    expect((await forgot(app, email)).status).toBe(200);
+    expect((await forgot(app, `  ${email.toUpperCase()} `)).status).toBe(200);
+    expect((await forgot(app, email)).status).toBe(429);
+  }, SLOW);
+
+  test('T12 the daily per-email cap blocks at its limit', async () => {
+    const app = createApp({
+      rateLimit: { forgotPasswordEmail: { limit: 100 }, forgotPasswordEmailDay: { limit: 3 } }, resetFloorMs: 0,
+    });
+    const email = uniqueEmail();
+    for (let i = 0; i < 3; i++) expect((await forgot(app, email)).status).toBe(200);
+    const blocked = await forgot(app, email);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_MANY_RESETS });
+    expect((await forgot(app, uniqueEmail())).status).toBe(200);
+  }, SLOW);
+
+  test('the daily cap is on by default (10 a day)', () => {
+    const { DEFAULT_LIMITS } = require('../src/lib/rateLimit');
+    expect(DEFAULT_LIMITS.forgotPasswordEmailDay).toMatchObject({ windowMs: 24 * 60 * 60 * 1000, limit: 10, byEmail: true });
+  });
+});

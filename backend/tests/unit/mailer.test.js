@@ -162,6 +162,53 @@ describe('sendLoginCodeEmail', () => {
   });
 });
 
+// T13 (phase 10, S9): the reset email escapes the name; the subject holds only the code.
+describe('sendPasswordResetEmail', () => {
+  test('dev mode prints the reset code line and sends nothing', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendPasswordResetEmail('a@example.com', 'Sara', '246810');
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Password reset code for a@example.com: 246810');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(gmailSend).not.toHaveBeenCalled();
+  });
+
+  test('Brevo: exact subject without the name, code in both parts, first name escaped', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendPasswordResetEmail('a@example.com', '<b>x</b>', '246810');
+    const body = lastBrevoBody();
+    expect(body.subject).toMatch(/^\d{6} is your Nexus password reset code$/);
+    expect(body.subject).toBe('246810 is your Nexus password reset code');
+    expect(body.to).toEqual([{ email: 'a@example.com', name: '<b>x</b>' }]);
+    expect(body.textContent).toContain('Your Nexus password reset code is: 246810');
+    expect(body.textContent).toContain('expires in 10 minutes');
+    expect(body.textContent).toContain("If you didn't ask to reset your password, ignore this email.");
+    expect(body.htmlContent).toContain('246810');
+    expect(body.htmlContent).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(body.htmlContent).not.toContain('<b>x</b>');
+  });
+});
+
+// Q6 (phase 10): the "password changed" notice carries no code and no link.
+describe('sendPasswordChangedEmail', () => {
+  test('dev mode prints one notice line and sends nothing', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendPasswordChangedEmail('a@example.com', 'Sara');
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Password changed notice for a@example.com');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('Brevo: fixed subject, no digits or links, first name escaped', async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendPasswordChangedEmail('a@example.com', '<b>x</b>');
+    const body = lastBrevoBody();
+    expect(body.subject).toBe('Your Nexus password was changed');
+    expect(body.textContent).toContain('reset your password again now from the Nexus sign-in screen');
+    expect(body.textContent).not.toMatch(/\d{6}|https?:/);
+    expect(body.htmlContent).not.toMatch(/\d{6}|href=/);
+    expect(body.htmlContent).toContain('&lt;b&gt;x&lt;/b&gt;');
+  });
+});
+
 describe('sendReportEmail', () => {
   const report = (ai = {
     status: 'ready', headline: 'You spent 287.99 JD.', narrative: 'Mostly <b>Electronics</b>.', tips: ['Plan ahead.'],

@@ -49,12 +49,13 @@ model User {
 model VerificationCode {
   id         String   @id @default(uuid())
   userId     String
+  // 'email' | 'login' | 'reset' (one row per user and type)
   type       String
   codeHash   String
   expiresAt  DateTime
   attempts   Int      @default(0)
   lastSentAt DateTime @default(now())
-  // Email codes: the address the code was sent to. NULL for sign-in codes.
+  // Email and reset codes: the address the code was sent to. NULL for sign-in codes.
   email      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -138,6 +138,56 @@ async function sendLoginCodeEmail(to, firstName, code) {
   });
 }
 
+// Password reset code (routes/auth.js /forgot-password). Always sent to the
+// stored address. The subject holds only the code, never the name.
+async function sendPasswordResetEmail(to, firstName, code) {
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] Password reset code for ${to}: ${code}`);
+    return;
+  }
+
+  await sendMail({
+    to,
+    toName: firstName,
+    subject: `${code} is your Nexus password reset code`,
+    text:
+      `Hi ${firstName},\n\n` +
+      `Your Nexus password reset code is: ${code}\n\n` +
+      `It expires in 10 minutes. If you didn't ask to reset your password, ignore this email. ` +
+      `Your password stays the same.`,
+    html: card(`
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Your password reset code is:</p>
+        <p style="font-size:34px;font-weight:bold;letter-spacing:10px;color:#63D0C3;margin:16px 0">${escapeHtml(code)}</p>
+        <p style="color:#8A9BB4;font-size:13px">It expires in 10 minutes.
+          If you didn't ask to reset your password, ignore this email. Your password stays the same.</p>`),
+  });
+}
+
+// Notice after a successful reset (routes/auth.js /reset-password). No code
+// and no link, so it is safe even if someone else reads it.
+async function sendPasswordChangedEmail(to, firstName) {
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] Password changed notice for ${to}`);
+    return;
+  }
+
+  await sendMail({
+    to,
+    toName: firstName,
+    subject: 'Your Nexus password was changed',
+    text:
+      `Hi ${firstName},\n\n` +
+      `Your Nexus password was just changed with a reset code.\n\n` +
+      `If this wasn't you, reset your password again now from the Nexus sign-in screen.`,
+    html: card(`
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Your Nexus password was just changed with a reset code.</p>
+        <p style="color:#8A9BB4;font-size:13px">If this wasn't you, reset your password again now
+          from the Nexus sign-in screen.</p>`),
+  });
+}
+
 // Copy of a receipt a store sent. items are the saved strings ("Milk x2").
 async function sendReceiptEmail(to, firstName, { storeName, items, totalAmount, pointsEarned, createdAt }) {
   const total = `${Number(totalAmount).toFixed(2)} JD`;
@@ -346,6 +396,6 @@ async function sendWeeklySummaryEmail(to, firstName, summary) {
 }
 
 module.exports = {
-  mailProvider, isMailConfigured, sendVerificationEmail, sendLoginCodeEmail, sendReceiptEmail, sendReportEmail,
-  sendBudgetAlertEmail, sendWeeklySummaryEmail,
+  mailProvider, isMailConfigured, sendVerificationEmail, sendLoginCodeEmail, sendPasswordResetEmail,
+  sendPasswordChangedEmail, sendReceiptEmail, sendReportEmail, sendBudgetAlertEmail, sendWeeklySummaryEmail,
 };

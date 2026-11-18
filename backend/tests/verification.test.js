@@ -3,6 +3,7 @@ jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 const request = require('supertest');
 const prisma = require('../src/lib/prisma');
 const { lastCodeFor } = require('./mailerMock');
+const { issueCode, checkResetCode, checkCode } = require('../src/lib/verification');
 const {
   PASSWORD, makeApp, uniqueEmail, registerUser, allowEmailResend, cleanup,
 } = require('./helpers');
@@ -146,5 +147,50 @@ describe('codes are bound to their address', () => {
     expect((await prisma.user.findUnique({ where: { id: u.user.id } })).email).toBe(u.email);
     expect(await codeRow(u)).toEqual(before);
     expect((await request(app).get('/api/user/me').set(auth(u.token))).status).toBe(200); // no bump
+  }, SLOW);
+});
+
+// Phase 10, S3: the attempt is taken atomically before the compare.
+describe('race-safe attempts', () => {
+  const resetRow = (u) => prisma.verificationCode.findUnique({
+    where: { userId_type: { userId: u.user.id, type: 'reset' } },
+  });
+
+  test('T1 ten parallel wrong reset codes use exactly 5 tries; then the right code fails', async () => {
+    const u = await registerUser(app);
+    const { code } = await issueCode(u.user.id, 'reset', { email: u.email });
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => checkResetCode(u.user.id, u.email, wrongCode(code))));
+    expect(results.every((ok) => ok === false)).toBe(true);
+    expect((await resetRow(u)).attempts).toBe(5);
+    expect(await checkResetCode(u.user.id, u.email, code)).toBe(false);
+  }, SLOW);
+
+  test('T2 sequential wrong email codes still count down 4, 3, 2, 1, then "Too many"', async () => {
+    const u = await registerUser(app);
+    const bad = wrongCode(lastCodeFor(u.email));
+    const texts = [];
+    for (let i = 0; i < 5; i++) texts.push(await checkCode(u.user.id, 'email', bad));
+    expect(texts).toEqual([
+      'Incorrect code. 4 attempts left.',
+      'Incorrect code. 3 attempts left.',
+      'Incorrect code. 2 attempts left.',
+      'Incorrect code. 1 attempt left.',
+      'Too many wrong attempts. Tap "Resend code" for a new one.',
+    ]);
+  }, SLOW);
+
+  test('the 5th try with the right code still works', async () => {
+    const u = await registerUser(app);
+    const { code } = await issueCode(u.user.id, 'reset', { email: u.email });
+    for (let i = 0; i < 4; i++) expect(await checkResetCode(u.user.id, u.email, wrongCode(code))).toBe(false);
+    expect(await checkResetCode(u.user.id, u.email, code)).toBe(true);
+    expect(await resetRow(u)).toBeNull();
+  }, SLOW);
+
+  test('a reset code sent to another address never passes', async () => {
+    const u = await registerUser(app);
+    const { code } = await issueCode(u.user.id, 'reset', { email: 'other@nexus.test' });
+    expect(await checkResetCode(u.user.id, u.email, code)).toBe(false);
   }, SLOW);
 });

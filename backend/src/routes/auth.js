@@ -3,13 +3,21 @@ const bcrypt = require('bcryptjs');
 const { randomUUID } = require('crypto');
 const prisma = require('../lib/prisma');
 const { passwordError } = require('../lib/password');
-const { sendEmailCode, resendWaitSeconds } = require('../lib/verification');
+const {
+  sendEmailCode, resendWaitSeconds, issueCode, checkResetCode, CODE_TTL_SECONDS,
+} = require('../lib/verification');
 const { normalizeEmail, emailError, findUserByEmail, emailTaken } = require('../lib/email');
 const { cleanName, nameError } = require('../lib/names');
 const { signSession, signChallenge, CHALLENGE_TTL_SECONDS } = require('../lib/token');
 const {
   isLoginTwoFactorAllowed, loginChallenge, loadChallengeUser, sendLoginCode, checkLoginCode,
 } = require('../lib/loginTwoFactor');
+const { disconnectUser } = require('../lib/realtime');
+const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../lib/mailer');
+const {
+  RESET_TYPE, DEFAULT_FLOOR_MS, FORGOT_SENT, RESET_FAILED,
+  looseEmailError, codeError, isResetEligible, padTo, errTag,
+} = require('../lib/passwordReset');
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -39,8 +47,13 @@ const waitError = (waitSeconds) => ({
   waitSeconds,
 });
 
+// The one forgot-password answer: the same bytes whether or not the email
+// has an account, a code was just sent, or the send failed.
+const FORGOT_BODY = { message: FORGOT_SENT, expiresInSeconds: CODE_TTL_SECONDS };
+
 // Router factory: every createApp() gets its own router and limiters.
-module.exports = function authRoutes(limiters) {
+// resetFloorMs: the minimum time of a forgot/reset answer (tests pass 0).
+module.exports = function authRoutes(limiters, { resetFloorMs = DEFAULT_FLOOR_MS } = {}) {
   const router = express.Router();
 
   // POST /api/auth/register
@@ -176,6 +189,95 @@ module.exports = function authRoutes(limiters) {
     } catch (err) {
       console.error('[login/verify]', err);
       res.status(500).json({ error: 'Login failed. Please try again.' });
+    }
+  });
+
+  // POST /api/auth/forgot-password { email }
+  // Emails a 6-digit reset code to the account's stored address. Always the
+  // same 200 (never says whether the email has an account) and padded to
+  // resetFloorMs; the email is sent without waiting for it.
+  router.post('/forgot-password',
+    limiters.forgotPasswordIp, limiters.forgotPasswordEmail, limiters.forgotPasswordEmailDay,
+    async (req, res) => {
+      const email = req.body?.email;
+      const problem = looseEmailError(email);
+      if (problem) return res.status(400).json({ error: problem });
+
+      const started = Date.now();
+      try {
+        const user = await findUserByEmail(email);
+        if (user && isResetEligible(user)) {
+          // { waitSeconds } (a code went out less than a minute ago): do nothing.
+          const r = await issueCode(user.id, RESET_TYPE, { email: user.email });
+          if (r.code) {
+            // The stored address, never the typed one.
+            sendPasswordResetEmail(user.email, user.firstName, r.code)
+              .catch((err) => console.error('[forgot-password] send failed', user.id, errTag(err)));
+          }
+        }
+      } catch (err) {
+        // A 500 only for known emails would tell them apart: same 200 instead.
+        console.error('[forgot-password] failed', errTag(err));
+      }
+      await padTo(started, resetFloorMs);
+      res.json(FORGOT_BODY);
+    });
+
+  // POST /api/auth/reset-password { email, code, newPassword }
+  // Sets the new password with a reset code, ends every older session, and
+  // signs in (or answers the 2FA challenge if the user turned it on).
+  router.post('/reset-password', limiters.resetPasswordIp, limiters.resetPasswordEmail, async (req, res) => {
+    const { email, code, newPassword } = req.body ?? {};
+    // All checks before any DB read, so a bad body never uses up a code try.
+    const emailProblem = looseEmailError(email);
+    if (emailProblem) return res.status(400).json({ error: emailProblem });
+    const codeProblem = codeError(code);
+    if (codeProblem) return res.status(400).json({ error: codeProblem });
+    const pwError = passwordError(newPassword);
+    if (pwError) return res.status(400).json({ error: pwError });
+
+    const started = Date.now();
+    let user;
+    try {
+      user = await findUserByEmail(email);
+      // One answer for every failure, with no "attempts left".
+      if (!user || !(await checkResetCode(user.id, user.email, code))) {
+        await padTo(started, resetFloorMs);
+        return res.status(400).json({ error: RESET_FAILED });
+      }
+
+      const hash = await bcrypt.hash(newPassword, 12);
+      const [updated] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id: user.id },
+          // Typing a code sent to this address proves the inbox (Q2).
+          // loginTwoFactor is not touched: 2FA stays on.
+          data: { password: hash, tokenVersion: { increment: 1 }, emailVerified: true },
+          select: { ...SAFE_USER_SELECT, tokenVersion: true, password: true },
+        }),
+        // Pending sign-in codes go too; old challenges die with the old hash.
+        prisma.verificationCode.deleteMany({ where: { userId: user.id, type: 'login' } }),
+      ]);
+      disconnectUser(user.id);
+
+      // Q6: tell the inbox owner (no code, no link). Fire and forget.
+      sendPasswordChangedEmail(updated.email, updated.firstName)
+        .catch((err) => console.error('[reset-password] notice failed', user.id, errTag(err)));
+
+      // Q1 (b): a 2FA user still needs the sign-in code. The challenge is
+      // signed with the new hash.
+      if (updated.loginTwoFactor && isLoginTwoFactorAllowed()) {
+        return res.json({
+          twoFactorRequired: true,
+          challengeToken: signChallenge(updated),
+          method: 'email',
+          expiresInSeconds: CHALLENGE_TTL_SECONDS,
+        });
+      }
+      res.json({ token: signSession(updated.id, updated.tokenVersion), user: safeUserOf(updated) });
+    } catch (err) {
+      console.error('[reset-password]', user?.id ?? '-', errTag(err));
+      res.status(500).json({ error: 'Reset failed. Please try again.' });
     }
   });
 

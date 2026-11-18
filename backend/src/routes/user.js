@@ -260,11 +260,16 @@ module.exports = function userRoutes(limiters) {
         return res.status(401).json({ error: 'Current password is incorrect.' });
       }
 
-      const { tokenVersion } = await prisma.user.update({
-        where: { id: req.userId },
-        data: { password: await bcrypt.hash(newPassword, 12), tokenVersion: { increment: 1 } },
-        select: { tokenVersion: true },
-      });
+      const hash = await bcrypt.hash(newPassword, 12);
+      const [{ tokenVersion }] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id: req.userId },
+          data: { password: hash, tokenVersion: { increment: 1 } },
+          select: { tokenVersion: true },
+        }),
+        // A pending forgot-password code must not outlive the change.
+        prisma.verificationCode.deleteMany({ where: { userId: req.userId, type: 'reset' } }),
+      ]);
       endOtherSessions(req.userId);
       res.json({ message: 'Password updated.', token: signSession(req.userId, tokenVersion) });
     } catch (err) {

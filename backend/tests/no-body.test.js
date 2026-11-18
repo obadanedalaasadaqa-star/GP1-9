@@ -1,6 +1,7 @@
 jest.mock('../src/lib/mailer', () => require('./mailerMock'));
 
 const request = require('supertest');
+const mailer = require('./mailerMock');
 const { makeApp, registerUser, createTestStore, cleanup } = require('./helpers');
 
 // Express 5 leaves req.body undefined (not {}) when a request sends no body.
@@ -24,6 +25,8 @@ const ROUTES = [
   ['post', '/api/auth/login', false],
   ['post', '/api/auth/login/send-code', false],
   ['post', '/api/auth/login/verify', false],
+  ['post', '/api/auth/forgot-password', false],
+  ['post', '/api/auth/reset-password', false],
   ['patch', '/api/user/me', true],
   ['patch', '/api/user/password', true],
   ['patch', '/api/user/security', true],
@@ -42,6 +45,11 @@ test.each(ROUTES)('%s %s with no body gets a 4xx JSON error', async (method, pat
   expect(res.status).toBeLessThan(500);
   expect(typeof res.body.error).toBe('string');
 }, SLOW);
+
+// T14 (phase 10): the forgot / reset routes above sent no reset mail.
+test('no reset mail was sent for an empty body', () => {
+  expect(mailer.sentReset).toHaveLength(0);
+});
 
 test('POST /api/store/receipts with no body gets 400', async () => {
   const res = await request(app).post('/api/store/receipts').set('X-Store-Key', shop.key);

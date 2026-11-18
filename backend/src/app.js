@@ -27,10 +27,12 @@ function trustProxySetting() {
  * aiClient: undefined = the real Claude client (null without ANTHROPIC_API_KEY);
  * tests pass a fake, or null for "not configured".
  * aiCaps: overrides of the daily AI caps (see routes/ai.js DEFAULT_AI_CAPS).
+ * resetFloorMs: minimum time of a forgot/reset-password answer (default
+ * 700 ms, lib/passwordReset.js); tests pass 0.
  * testRoutes: true mounts POST /api/receipts and /api/receipts/seed (tests
  * only; index.js never passes it, so production has neither route).
  */
-function createApp({ rateLimit, aiClient, aiCaps, testRoutes = false } = {}) {
+function createApp({ rateLimit, aiClient, aiCaps, resetFloorMs, testRoutes = false } = {}) {
   const app = express();
   const limiters = makeLimiters(rateLimit);
   const getAiClient = aiClient === undefined ? realGetAiClient : () => aiClient;
@@ -39,7 +41,7 @@ function createApp({ rateLimit, aiClient, aiCaps, testRoutes = false } = {}) {
   app.use(cors({ origin: '*' }));
   app.use(express.json());
 
-  app.use('/api/auth', authRoutes(limiters));
+  app.use('/api/auth', authRoutes(limiters, { resetFloorMs }));
   app.use('/api/user', userRoutes(limiters));
   if (testRoutes === true) app.use('/api/receipts', receiptRoutes());
   app.use('/api/store', storeRoutes(limiters));
