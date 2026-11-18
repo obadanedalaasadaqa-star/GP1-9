@@ -15,28 +15,41 @@ class AppConfig {
 }
 
 class AppColors {
-  // Fable "receipt" palette. Names kept from the old theme so every screen
-  // still compiles; the values are the new ones.
-  static const ink      = Color(0xFF17142B);
-  static const paper    = Color(0xFFECE9E1);
-  static const lime     = Color(0xFFD8F34A);
-  static const cobalt   = Color(0xFF2D3BE6);
-  static const coral    = Color(0xFFFF5A3C);
-  static const pink     = Color(0xFFFF8FC7);
-  static const teal     = Color(0xFF19B39A);
-  static const amber    = Color(0xFFFFB627);
-  static const lavender = Color(0xFF6E69B8);
-  static const cobaltSoft  = Color(0xFFDDE0FF); // text on cobalt
-  static const cobaltLight = Color(0xFF8E97FF); // cobalt on ink
+  // Indigo Tide palette: navy ink, indigo hero, pale sky-blue action.
+  // Names kept from the old theme so every screen still compiles; the
+  // values are the new ones.
+  static const ink      = Color(0xFF242649);
+  static const paper    = Color(0xFFF1F1F1);
+  static const lime     = Color(0xFFB2D3EB); // the action colour (sky blue)
+  static const cobalt   = Color(0xFF263B84); // hero indigo
+  static const lavender = Color(0xFF364989);
+  static const pink     = Color(0xFFB2D3EB);
+  static const cobaltSoft  = Color(0xFFCDDFEF); // text on cobalt
+  static const cobaltLight = Color(0xFF65A7D3); // cobalt on ink
+  static const dotted   = Color(0xFFA9AAB6);    // dotted leaders, tracks
+
+  // Status colours stay warm so errors and warnings still stand out.
+  static const coral    = Color(0xFFFF5A3C);    // error
+  static const amber    = Color(0xFFFFB627);    // warning
+  static const teal     = Color(0xFF19B39A);    // success
   static const danger   = Color(0xFFC93A1E);    // coral readable as text
   static const coralText = Color(0xFFFF8F7A);   // coral readable as text on ink
-  static const dotted   = Color(0xFFB9B5C9);    // dotted leaders, tracks
+
+  // Indigo Tide blues for categories and page backgrounds.
+  static const tide1 = Color(0xFF386CAF);
+  static const tide2 = Color(0xFF65A7D3);
+  static const tide3 = Color(0xFF364989);
+  static const tide4 = Color(0xFFB2D3EB);
+  static const tide5 = Color(0xFFCDDFEF);
+  static const pageAi      = tide4;
+  static const pageBudgets = tide5;
+  static const pageVerify  = tide2;
 
   // Dark mode (ink)
   static const bg      = ink;
-  static const surface = Color(0xFF262148); // sheets, cards
-  static const border  = Color(0xFF3A3466); // rows, hairlines
-  static const raised  = Color(0xFF3A3466);
+  static const surface = Color(0xFF404261); // sheets, cards
+  static const border  = Color(0xFF545671); // rows, hairlines
+  static const raised  = Color(0xFF545671);
 
   // Accents (old names → new roles)
   static const blue      = cobalt;
@@ -50,29 +63,29 @@ class AppColors {
 
   // Text on ink
   static const textPrimary = Color(0xFFFFFFFF);
-  static const textMuted   = Color(0xFFC9C6DA);
-  static const textDim     = Color(0xFFD5D2E6);
+  static const textMuted   = Color(0xFFC2C2CC);
+  static const textDim     = Color(0xFFD8D8DE);
 
   // Light mode (paper)
   static const bgLight          = paper;
   static const surfaceLight     = Color(0xFFFFFFFF);
-  static const borderLight      = Color(0xFFD5D2E6);
+  static const borderLight      = Color(0xFFC8C8CF);
   static const textPrimaryLight = ink;
-  static const textMutedLight   = Color(0xFF5A5670);
-  static const textDimLight     = Color(0xFF3A3466);
+  static const textMutedLight   = Color(0xFF66677F);
+  static const textDimLight     = Color(0xFF3D3E5D);
 
-  // Kept for old call sites: a flat lime fill (no gradient in this design).
+  // Kept for old call sites: a flat fill (no gradient in this design).
   static const goldGlow = LinearGradient(colors: [lime, lime]);
 }
 
 /// Colour for each receipt category, shared by every screen.
 class CategoryColors {
   static const map = {
-    'Supermarket': AppColors.cobalt,
-    'Food':        AppColors.coral,
-    'Pharmacy':    AppColors.teal,
-    'Clothing':    AppColors.pink,
-    'Electronics': AppColors.amber,
+    'Supermarket': AppColors.tide1,
+    'Food':        AppColors.tide2,
+    'Pharmacy':    AppColors.tide3,
+    'Clothing':    AppColors.tide4,
+    'Electronics': AppColors.tide5,
   };
 
   /// Colour for [category], muted for unknown ones.

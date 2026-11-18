@@ -111,7 +111,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   @override
   Widget build(BuildContext context) {
     final nx = Nx.of(context);
-    final pageBg = nx.dark ? AppColors.ink : AppColors.amber;
+    final pageBg = nx.dark ? AppColors.ink : AppColors.pageBudgets;
     final onPage = nx.dark ? Colors.white : AppColors.ink;
     final list = _list;
 

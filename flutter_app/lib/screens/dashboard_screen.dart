@@ -744,8 +744,8 @@ class _CompactReceiptTile extends StatelessWidget {
 
   static Color _tileColor(Nx nx, String category) {
     final c = CategoryColors.of(category);
-    // Cobalt disappears on the dark rows; use its lighter tint there.
-    return nx.dark && c == AppColors.cobalt ? AppColors.cobaltLight : c;
+    // The darkest tide blue disappears on dark rows; use a lighter tint there.
+    return nx.dark && c == AppColors.tide3 ? AppColors.cobaltLight : c;
   }
 
   String _formatDate(DateTime d) {

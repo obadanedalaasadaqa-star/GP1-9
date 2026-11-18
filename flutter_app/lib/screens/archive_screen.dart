@@ -563,7 +563,7 @@ class _ReceiptTile extends StatelessWidget {
             children: [
               NxIconTile(
                 icon: categoryIcon(receipt.category),
-                color: nx.dark && cat == AppColors.cobalt
+                color: nx.dark && cat == AppColors.tide3
                     ? AppColors.cobaltLight : cat,
                 tilt: receipt.storeName.length.isEven ? -4 : 3),
               const SizedBox(width: 12),

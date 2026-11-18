@@ -101,7 +101,7 @@ class _AiScreenState extends State<AiScreen> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     final nx = Nx.of(context);
     final chat = context.watch<AiChatSession>();
-    final pageBg = nx.dark ? AppColors.ink : AppColors.pink;
+    final pageBg = nx.dark ? AppColors.ink : AppColors.pageAi;
     final onPage = nx.dark ? Colors.white : AppColors.ink;
     final onAsk = AiScreen.tabs[_tabs.index] == AiTab.ask;
 

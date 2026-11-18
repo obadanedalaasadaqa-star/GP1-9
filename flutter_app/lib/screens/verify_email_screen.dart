@@ -154,7 +154,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     final nx          = Nx.of(context);
     final login       = widget.login;
     final email       = login?.email ?? context.watch<AuthProvider>().user?.email ?? '';
-    final pageBg      = nx.dark ? AppColors.ink : AppColors.teal;
+    final pageBg      = nx.dark ? AppColors.ink : AppColors.pageVerify;
     final onPage      = nx.dark ? Colors.white : AppColors.ink;
     const ink         = AppColors.ink;
 
