@@ -472,6 +472,22 @@ void main() {
       expect(tester.getSize(find.byKey(heroKey)).height, 350);
     }, variant: ios);
 
+    testWidgets('phase 10: the "Forgot password?" row is 44 high, right under the password, Sign In only',
+        (tester) async {
+      await pumpSize(tester, const Size(393, 852), const FakeViewPadding(top: 59, bottom: 34));
+      const row = ValueKey('forgot-password-row');
+      expect(find.text('Forgot password?'), findsOneWidget);
+      expect(tester.getSize(find.byKey(row)).height, 44);
+      expect(tester.getRect(find.byKey(row)).top,
+          tester.getRect(find.widgetWithText(TextFormField, '••••••••')).bottom);
+      final link = tester.getRect(find.widgetWithText(TextButton, 'Forgot password?'));
+      expect(link.height, greaterThanOrEqualTo(44));
+      expect(link.width, greaterThanOrEqualTo(44));
+      await tester.tap(find.text('Register'));
+      await tester.pumpAndSettle();
+      expect(find.text('Forgot password?'), findsNothing);
+    }, variant: ios);
+
     testWidgets('T11d 393x852: fits, regular hero 359', (tester) async {
       await pumpSize(tester, const Size(393, 852), const FakeViewPadding(top: 59, bottom: 34));
       expect(page(tester).maxScrollExtent, 0);

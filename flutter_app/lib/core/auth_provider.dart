@@ -123,6 +123,24 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Set a new password with a reset code. Null when signed in (through
+  /// [completeLogin], like [login]). A [LoginChallenge] when two-step sign-in
+  /// is on: nothing is saved, the code screen finishes the sign-in.
+  Future<LoginChallenge?> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final result = await ApiClient.resetPassword(email: email, code: code, newPassword: newPassword);
+    switch (result) {
+      case LoginSession(:final token, :final user):
+        await completeLogin(token, user);
+        return null;
+      case LoginChallenge():
+        return result;
+    }
+  }
+
   /// Save the session and show the app (after a login or a sign-in code).
   Future<void> completeLogin(String token, User user) async {
     _session++;

@@ -169,7 +169,11 @@ class ApiClient {
           _kTimeout,
           onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
         );
-    final data = _parse(res);
+    return _loginResult(_parse(res), email);
+  }
+
+  /// A login or reset answer: the 2FA challenge (for [email]) or a session.
+  static LoginResult _loginResult(Map<String, dynamic> data, String email) {
     final challenge = data['challengeToken'];
     if (data['twoFactorRequired'] == true && challenge is String) {
       return LoginChallenge(challengeToken: challenge, email: email);
@@ -178,6 +182,45 @@ class ApiClient {
       token: data['token'] as String,
       user: User.fromJson(data['user'] as Map<String, dynamic>),
     );
+  }
+
+  /// Ask for a password reset code (no session, so no Authorization header).
+  /// The server answers the same whether or not [email] has an account.
+  static Future<void> forgotPassword(String email) async {
+    _parse(await _signedOutPost('/auth/forgot-password', {'email': email}));
+  }
+
+  /// Set a new password with the emailed reset code. A [LoginSession], or a
+  /// [LoginChallenge] when the account has two-step sign-in on.
+  static Future<LoginResult> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final res = await _signedOutPost('/auth/reset-password',
+        {'email': email, 'code': code, 'newPassword': newPassword});
+    return _loginResult(_parse(res), email);
+  }
+
+  /// POST with no session (forgot / reset password). A timeout or a
+  /// connection error becomes an [ApiException] with a readable message.
+  static Future<http.Response> _signedOutPost(String path, Map<String, dynamic> body) async {
+    try {
+      return await http
+          .post(
+            Uri.parse('${AppConfig.baseUrl}$path'),
+            headers: await _headers(),
+            body: jsonEncode(body),
+          )
+          .timeout(
+            _kTimeout,
+            onTimeout: () => throw ApiException('Server is waking up or unreachable. Please try again.'),
+          );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw ApiException(_kUnreachable);
+    }
   }
 
   /// Email a sign-in code for [challengeToken] (no session yet, so no

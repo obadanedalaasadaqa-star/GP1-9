@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../core/constants.dart';
+import '../core/design.dart';
 import '../core/validators.dart';
 
 /// Live strength bar + requirement checklist for a password field.
 /// Rebuilds as [controller] changes; hidden while the field is empty.
+/// The bar and the icons carry the colour; the text stays in [Nx.text] so it
+/// is readable on both grounds (12 pt minimum). Under Reduce Motion the bar
+/// shows its final state at once.
 class PasswordMeter extends StatelessWidget {
   final TextEditingController controller;
   final Color textMuted;
@@ -26,6 +29,8 @@ class PasswordMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final nx = Nx.of(context);
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: controller,
       builder: (context, value, _) {
@@ -44,7 +49,7 @@ class PasswordMeter extends StatelessWidget {
                   for (var i = 0; i < 4; i++) ...[
                     Expanded(
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
+                        duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 250),
                         height: 8,
                         decoration: BoxDecoration(
                           color: i < filled ? color : track,
@@ -59,8 +64,7 @@ class PasswordMeter extends StatelessWidget {
                     width: 48,
                     child: Text(label,
                       textAlign: TextAlign.right,
-                      style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+                      style: NxType.display(12, color: nx.text, weight: FontWeight.w700)),
                   ),
                 ],
               ),
@@ -80,10 +84,7 @@ class PasswordMeter extends StatelessWidget {
                         color: rule.test(password) ? AppColors.teal : textMuted,
                       ),
                       const SizedBox(width: 8),
-                      Text(rule.label,
-                        style: GoogleFonts.dmMono(
-                          fontSize: 11.5,
-                          color: rule.test(password) ? AppColors.mint : textMuted)),
+                      Text(rule.label, style: NxType.mono(12, color: nx.text)),
                     ],
                   ),
                 ),

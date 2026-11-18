@@ -7,6 +7,7 @@ import '../core/auth_provider.dart';
 import '../core/constants.dart';
 import '../core/design.dart';
 import '../core/login_challenge.dart';
+import '../widgets/code_boxes.dart';
 
 /// Enter the 6-digit code emailed to the user.
 /// [sendOnOpen]: request a fresh code when the screen opens (false when the
@@ -33,7 +34,7 @@ class VerifyEmailScreen extends StatefulWidget {
 }
 
 class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
-  static const _codeLength = 6;
+  static const _codeLength = CodeBoxes.length;
   static const _resendSeconds = 60;
 
   final _codeCtrl = TextEditingController();
@@ -208,85 +209,14 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
               const SizedBox(height: 26),
 
               // Code boxes on a slip: one hidden text field drives six boxes
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Transform.rotate(
-                  angle: 0.012,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(boxShadow: [
-                      BoxShadow(color: nx.dark ? AppColors.lime : ink,
-                        offset: const Offset(5, 6)),
-                    ]),
-                    child: Column(
-                      children: [
-                        const ReceiptEdge(color: Colors.white, up: true),
-                        Container(
-                          color: Colors.white,
-                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('YOUR CODE', style: NxType.label(AppColors.textMutedLight)),
-                              const SizedBox(height: 10),
-                              GestureDetector(
-                                onTap: () => _focus.requestFocus(),
-                                child: Stack(
-                                  children: [
-                                    Opacity(
-                                      opacity: 0,
-                                      child: TextField(
-                                        controller: _codeCtrl,
-                                        focusNode: _focus,
-                                        keyboardType: TextInputType.number,
-                                        autofillHints: const [AutofillHints.oneTimeCode],
-                                        maxLength: _codeLength,
-                                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                        onChanged: (v) {
-                                          setState(() => _error = null);
-                                          if (v.length == _codeLength) _verify();
-                                        },
-                                      ),
-                                    ),
-                                    ListenableBuilder(
-                                      listenable: Listenable.merge([_codeCtrl, _focus]),
-                                      builder: (context, _) => Row(
-                                        children: List.generate(_codeLength, (i) {
-                                          final text = _codeCtrl.text;
-                                          final filled = i < text.length;
-                                          final active = _focus.hasFocus && i == text.length;
-                                          return Expanded(
-                                            child: Container(
-                                              height: 58,
-                                              margin: EdgeInsets.only(right: i < _codeLength - 1 ? 7 : 0),
-                                              alignment: Alignment.center,
-                                              decoration: BoxDecoration(
-                                                color: filled ? AppColors.lime : Colors.white,
-                                                borderRadius: BorderRadius.circular(14),
-                                                border: Border.all(
-                                                  width: active ? 3 : 2,
-                                                  color: _error != null
-                                                      ? AppColors.danger
-                                                      : active ? AppColors.cobalt : ink),
-                                              ),
-                                              child: Text(filled ? text[i] : '',
-                                                style: NxType.mono(24, color: ink,
-                                                  weight: FontWeight.w500)),
-                                            ),
-                                          );
-                                        }),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const ReceiptEdge(color: Colors.white),
-                      ],
-                    ),
-                  ),
-                ),
+              CodeBoxes(
+                controller: _codeCtrl,
+                focusNode: _focus,
+                hasError: _error != null,
+                onChanged: (v) {
+                  setState(() => _error = null);
+                  if (v.length == _codeLength) _verify();
+                },
               ),
               const SizedBox(height: 18),
 

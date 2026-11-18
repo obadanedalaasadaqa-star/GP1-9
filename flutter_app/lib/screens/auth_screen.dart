@@ -8,6 +8,7 @@ import '../core/constants.dart';
 import '../core/design.dart';
 import '../core/validators.dart';
 import '../widgets/password_meter.dart';
+import 'forgot_password_screen.dart';
 import 'verify_email_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -218,7 +219,9 @@ class _AuthScreenState extends State<AuthScreen>
                               tabs: const [Tab(text: 'Sign In'), Tab(text: 'Register')],
                             ),
                           ),
-                          const SizedBox(height: 22),
+                          // 16, not 22: room for the forgot-password row, so Sign In
+                          // still fits without scrolling at 393x852.
+                          const SizedBox(height: 16),
 
                           Form(
                             key: _formKey,
@@ -283,6 +286,29 @@ class _AuthScreenState extends State<AuthScreen>
                                   validator: (v) => _isRegister
                                       ? validateNewPassword(v)
                                       : (v == null || v.isEmpty) ? 'Password is required' : null),
+                                if (!_isRegister)
+                                  SizedBox(
+                                    key: const ValueKey('forgot-password-row'),
+                                    height: 44,
+                                    width: double.infinity,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        style: TextButton.styleFrom(
+                                          minimumSize: const Size(44, 44),
+                                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                                        onPressed: () => Navigator.of(context).push(
+                                          MaterialPageRoute(builder: (_) => ForgotPasswordScreen(
+                                            initialEmail: _email.text.trim()))),
+                                        child: Text('Forgot password?',
+                                          style: NxType.body(14, color: textPrimary,
+                                            weight: FontWeight.w700).copyWith(
+                                            decoration: TextDecoration.underline,
+                                            decorationColor: textPrimary)),
+                                      ),
+                                    ),
+                                  ),
                                 if (_isRegister)
                                   PasswordMeter(
                                     controller: _password,
@@ -310,7 +336,8 @@ class _AuthScreenState extends State<AuthScreen>
                                   ),
                                 ],
 
-                                const SizedBox(height: 22),
+                                // The forgot-password row already gives the air on Sign In.
+                                SizedBox(height: _isRegister ? 22 : 0),
                                 Padding(
                                   padding: const EdgeInsets.only(right: 4, bottom: 4),
                                   child: DecoratedBox(
@@ -344,6 +371,12 @@ class _AuthScreenState extends State<AuthScreen>
                                 const SizedBox(height: 14),
                                 Center(
                                   child: TextButton(
+                                    // 44 high like the forgot-password link (not
+                                    // Material's padded 48), so Sign In fits at 393x852.
+                                    style: TextButton.styleFrom(
+                                      minimumSize: const Size(44, 44),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                                     onPressed: () => _tabs.animateTo(_isRegister ? 0 : 1),
                                     child: Text(
                                       _isRegister

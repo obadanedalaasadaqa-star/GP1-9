@@ -114,4 +114,32 @@ void main() {
       expect(auth.user!.loginTwoFactor, isTrue);
     });
   });
+
+  // T15 (phase 10, S17): a reset signs in through completeLogin; a challenge saves nothing.
+  test('resetPassword with a session saves the token and the user through completeLogin', () async {
+    final auth = await loggedOut();
+    var notified = 0;
+    auth.addListener(() => notified++);
+    final challenge = await withHttp(
+        (_) async => http.Response(jsonEncode({'token': 'jwt-reset', 'user': userJson()}), 200),
+        () => auth.resetPassword(email: 'a@nexus.test', code: '123456', newPassword: 'Nexus@2027!'));
+    expect(challenge, isNull);
+    expect(auth.isLoggedIn, isTrue);
+    expect(auth.user!.email, 'a@nexus.test');
+    expect(await ApiClient.getToken(), 'jwt-reset');
+    expect(notified, 1);
+  });
+
+  test('resetPassword with a challenge saves nothing and returns it', () async {
+    final auth = await loggedOut();
+    final keysBefore = (await SharedPreferences.getInstance()).getKeys();
+    final challenge = await withHttp((_) async => http.Response(jsonEncode(challengeJson), 200),
+        () => auth.resetPassword(email: 'a@nexus.test', code: '123456', newPassword: 'Nexus@2027!'));
+    expect(challenge, isNotNull);
+    expect(challenge!.challengeToken, 'challenge-1');
+    expect(challenge.email, 'a@nexus.test');
+    expect(auth.isLoggedIn, isFalse);
+    expect(await ApiClient.getToken(), isNull);
+    expect((await SharedPreferences.getInstance()).getKeys(), keysBefore);
+  });
 }
