@@ -9,6 +9,7 @@ const storeRoutes    = require('./routes/store');
 const aiRoutes       = require('./routes/ai');
 const budgetRoutes   = require('./routes/budgets');
 const { makeLimiters } = require('./lib/rateLimit');
+const { proxyCheckMiddleware } = require('./lib/proxyCheck');
 const { getAiClient: realGetAiClient } = require('./lib/ai');
 
 // "trust proxy" from TRUST_PROXY (default 1 = one proxy hop, e.g. Render).
@@ -29,15 +30,21 @@ function trustProxySetting() {
  * aiCaps: overrides of the daily AI caps (see routes/ai.js DEFAULT_AI_CAPS).
  * resetFloorMs: minimum time of a forgot/reset-password answer (default
  * 700 ms, lib/passwordReset.js); tests pass 0.
+ * proxyCheck: true logs one "[proxy-check]" line for the first request
+ * (index.js passes it; tests leave it off).
  * testRoutes: true mounts POST /api/receipts and /api/receipts/seed (tests
  * only; index.js never passes it, so production has neither route).
  */
-function createApp({ rateLimit, aiClient, aiCaps, resetFloorMs, testRoutes = false } = {}) {
+function createApp({ rateLimit, aiClient, aiCaps, resetFloorMs, proxyCheck = false, testRoutes = false } = {}) {
   const app = express();
   const limiters = makeLimiters(rateLimit);
   const getAiClient = aiClient === undefined ? realGetAiClient : () => aiClient;
 
-  app.set('trust proxy', trustProxySetting());
+  const trust = trustProxySetting();
+  app.set('trust proxy', trust);
+  // One "[proxy-check]" line per process: the shape of the proxy chain (no
+  // IP addresses), so TRUST_PROXY can be set from the Render logs.
+  if (proxyCheck) app.use(proxyCheckMiddleware(trust));
   app.use(cors({ origin: '*' }));
   app.use(express.json());
 

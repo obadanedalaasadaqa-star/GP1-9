@@ -35,7 +35,7 @@ async function start() {
       : 'available (opt-in per user, email codes)'}`);
 
   // One HTTP server for the API and the Socket.IO live connection.
-  const server = http.createServer(createApp());
+  const server = http.createServer(createApp({ proxyCheck: true }));
   initRealtime(server);
   server.listen(PORT, () => {
     console.log(`\n🔷 Nexus Backend running on http://localhost:${PORT}`);
