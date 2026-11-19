@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/auth_provider.dart';
+import '../core/biometric_service.dart';
 import '../core/constants.dart';
 import '../core/design.dart';
 import '../core/realtime_service.dart';
@@ -11,7 +12,8 @@ import '../screens/verify_email_screen.dart';
 
 /// Profile's "SIGN-IN SECURITY" card: the opt-in two-step sign-in switch.
 /// Turning it on needs a verified email; turning it off asks for the current
-/// password (the server checks both).
+/// password (the server checks both). On iOS, a second row turns Face ID on
+/// and off (both ask for Face ID first).
 class SecurityCard extends StatefulWidget {
   const SecurityCard({super.key});
 
@@ -22,6 +24,78 @@ class SecurityCard extends StatefulWidget {
 class _SecurityCardState extends State<SecurityCard> {
   // Value shown while the turn-on request runs (null = show the user's value).
   bool? _pending;
+  // Value shown while the Face ID prompt is up (null = the real state).
+  bool? _bioPending;
+
+  @override
+  void initState() {
+    super.initState();
+    // Face ID may have been set up, locked or turned off since the last check.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && isIosPlatform) context.read<AuthProvider>().refreshBiometricAvailability();
+    });
+  }
+
+  Future<void> _toggleBiometrics(bool on) async {
+    final auth = context.read<AuthProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    final name = auth.biometricName;
+    setState(() => _bioPending = on);
+    final outcome = on ? await auth.enableBiometrics() : await auth.disableBiometrics();
+    if (mounted) setState(() => _bioPending = null);
+    final state = on ? 'off' : 'on'; // where it stays when it didn't work
+    final String text;
+    if (outcome == BioOutcome.success) {
+      text = on ? '$name is on. Next time, just look at your iPhone.' : '$name is off.';
+    } else if (outcome == BioOutcome.lockout) {
+      text = '$name is locked, so it\'s still $state. Unlock your iPhone, then try again.';
+    } else {
+      text = "$name didn't go through, so it's still $state.";
+    }
+    messenger.showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// The line under "Face ID" (design 3.2).
+  static String _bioLine(BiometricAvailability a, bool on) {
+    final name = a.name;
+    if (a.usable) {
+      return on ? 'Nexus opens with $name on this iPhone' : 'Open Nexus with $name instead of your password';
+    }
+    return switch (a.reason) {
+      BiometricReason.notEnrolled || BiometricReason.noPasscode => 'Set up $name in iPhone Settings to use this',
+      BiometricReason.turnedOffForApp => 'Allow $name for Nexus in iPhone Settings to use this',
+      BiometricReason.lockout => '$name is locked. Unlock your iPhone, then try again',
+      BiometricReason.unknown => "Couldn't check $name just now. Reopen Nexus to try again",
+      _ => 'Not available on this iPhone',
+    };
+  }
+
+  Widget _biometricRow(AuthProvider auth, Color textPrimary, Color textMuted) {
+    final a = auth.biometricAvailability;
+    final on = auth.biometricsOn;
+    return MergeSemantics(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(a.name, style: NxType.body(15, weight: FontWeight.w700, color: textPrimary)),
+                const SizedBox(height: 2),
+                Text(_bioLine(a, on), style: NxType.body(12.5, color: textMuted)),
+              ],
+            ),
+          ),
+          Switch(
+            key: const ValueKey('switch-face-id'),
+            // Always the real state; being disabled never moves it.
+            value: _bioPending ?? on,
+            onChanged: _bioPending == null && a.usable ? _toggleBiometrics : null,
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _turnOn() async {
     final auth = context.read<AuthProvider>();
@@ -56,7 +130,8 @@ class _SecurityCardState extends State<SecurityCard> {
 
   @override
   Widget build(BuildContext context) {
-    final user        = context.watch<AuthProvider>().user!;
+    final auth        = context.watch<AuthProvider>();
+    final user        = auth.user!;
     final isDark      = context.watch<ThemeProvider>().isDark;
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
     final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
@@ -109,6 +184,12 @@ class _SecurityCardState extends State<SecurityCard> {
                 ],
               ),
             ),
+          if (isIosPlatform) ...[
+            const SizedBox(height: 12),
+            const NxRowDivider(),
+            const SizedBox(height: 12),
+            _biometricRow(auth, textPrimary, textMuted),
+          ],
         ],
     );
   }

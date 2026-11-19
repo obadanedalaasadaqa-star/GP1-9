@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:nexus_app/core/api_client.dart';
 import 'package:nexus_app/core/constants.dart';
 import 'package:nexus_app/screens/forgot_password_screen.dart';
 import 'package:nexus_app/screens/reset_password_screen.dart';
 import 'package:nexus_app/screens/verify_email_screen.dart';
 import 'package:nexus_app/widgets/code_boxes.dart';
 import 'package:nexus_app/widgets/password_meter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/auth_fixtures.dart';
 import 'support/reset_harness.dart';
@@ -104,7 +104,7 @@ void main() {
     await h.tap(tester, setPassword);
     expect(h.count('/auth/reset-password'), 1);
     expect(jsonDecode(h.requests.last.body), {'email': _email, 'code': '123456', 'newPassword': _strong});
-    expect((await SharedPreferences.getInstance()).getString('nexus_token'), 'jwt-reset');
+    expect(await ApiClient.getToken(), 'jwt-reset');
     expect(find.text('SHELL'), findsOneWidget);
     expect(find.byType(ResetPasswordScreen), findsNothing);
     expect(find.byType(ForgotPasswordScreen), findsNothing);
@@ -125,7 +125,7 @@ void main() {
     expect(find.byType(VerifyEmailScreen), findsOneWidget);
     expect(find.text("Confirm it's you"), findsOneWidget);
     expect(h.count('/auth/login/send-code'), 1); // it asks for a sign-in code on open
-    expect((await SharedPreferences.getInstance()).getString('nexus_token'), isNull);
+    expect(await ApiClient.getToken(), isNull);
     expect(find.byType(ResetPasswordScreen), findsNothing);
     expect(find.byType(ForgotPasswordScreen), findsNothing);
     expect(find.text('SHELL'), findsNothing);

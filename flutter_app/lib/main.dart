@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'core/ai_chat_session.dart';
 import 'core/api_client.dart';
+import 'core/app_lock.dart';
 import 'core/auth_provider.dart';
 import 'core/budget_models.dart';
 import 'core/constants.dart';
@@ -20,6 +21,8 @@ import 'screens/archive_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/verify_email_screen.dart';
+import 'widgets/app_lock_overlay.dart';
+import 'widgets/biometric_offer_sheet.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/dismiss_keyboard.dart';
 import 'widgets/live_sheets.dart';
@@ -30,16 +33,25 @@ void main() {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
-  runApp(
+  // One AuthProvider (S23): the same object AppLock locks and the app reads.
+  final auth = AuthProvider();
+  final appLock = AppLock(auth: auth);
+  // Before runApp, so it handles `resumed` before any RealtimeService does.
+  WidgetsBinding.instance.addObserver(appLock);
+  runApp(buildNexusRoot(auth: auth, theme: ThemeProvider(), appLock: appLock));
+}
+
+/// The app with its providers. Tests build it with the same [auth] they hand
+/// to [AppLock], exactly like [main].
+Widget buildNexusRoot({required AuthProvider auth, required ThemeProvider theme, AppLock? appLock}) =>
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider<AuthProvider>.value(value: auth),
+        ChangeNotifierProvider<ThemeProvider>.value(value: theme),
+        Provider<AppLock?>.value(value: appLock),
       ],
       child: const NexusApp(),
-    ),
-  );
-}
+    );
 
 // ── App ──────────────────────────────────────────────────────────────────────
 
@@ -124,9 +136,9 @@ class NexusApp extends StatelessWidget {
   }
 
   /// Sits above the Navigator: a tap outside any field closes the keyboard on
-  /// every screen, dialog and sheet.
+  /// every screen, dialog and sheet, and the Face ID lock covers them all.
   static Widget appBuilder(BuildContext context, Widget? child) =>
-      DismissKeyboard(child: child ?? const SizedBox.shrink());
+      DismissKeyboard(child: AppLockGate(child: child ?? const SizedBox.shrink()));
 
   @override
   Widget build(BuildContext context) {
@@ -408,10 +420,28 @@ class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
   // The open QR / "New receipt" / budget alert sheets live in LiveSheets.
   bool _expiring = false;
 
+  // Face ID re-lock (null in tests that build the shell without main()).
+  AppLock? _appLock;
+  late final LockHooks _lockHooks = LockHooks(
+    onLock: _realtime.stop,
+    onUnlocked: () {
+      // Points and lists refresh once connected.
+      _realtime.syncOnFirstConnect = true;
+      _realtime.start();
+    },
+    onPasswordRequested: () {
+      closeLiveSheets();
+      Navigator.of(context).popUntil((r) => r.isFirst);
+      context.read<AuthProvider>().logout();
+    },
+  );
+
   @override
   void initState() {
     super.initState();
     _realtime = RealtimeService();
+    _appLock = context.read<AppLock?>();
+    _appLock?.hooks = _lockHooks;
     _subs.addAll([
       _realtime.receipts.listen(_onReceipt),
       _realtime.budgetAlerts.listen(_onBudgetAlert),
@@ -428,12 +458,16 @@ class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
       final auth = context.read<AuthProvider>();
       if (auth.consumeJustRegistered() && !(auth.user?.emailVerified ?? true)) {
         VerifyEmailScreen.open(context, sendOnOpen: false);
+      } else if (auth.consumeBiometricOffer()) {
+        // After a password sign-in: "Use Face ID next time?"
+        BiometricOfferSheet.show(context);
       }
     });
   }
 
   @override
   void dispose() {
+    if (identical(_appLock?.hooks, _lockHooks)) _appLock?.hooks = null;
     for (final sub in _subs) {
       sub.cancel();
     }
@@ -463,6 +497,7 @@ class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
   void _onReceipt(ReceiptEvent e) {
     if (!mounted || _expiring) return;
     final auth = context.read<AuthProvider>();
+    if (auth.locked) return; // nothing shows while locked (S8)
     final user = auth.user;
     if (user != null) auth.updateUser(user.copyWith(loyaltyPoints: e.loyaltyPoints));
 
@@ -475,18 +510,21 @@ class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
   // receipt" sheet, or a budget alert sheet. The Budgets screen gets the
   // shell's RealtimeService directly (the provider is below this context).
   void _onBudgetAlert(BudgetAlert alert) {
-    if (!mounted || _expiring) return;
+    if (!mounted || _expiring || context.read<AuthProvider>().locked) return;
     showBudgetAlert(alert, onViewBudgets: () {
       if (mounted) BudgetsScreen.open(context, realtime: _realtime);
     });
   }
 
   // Reconnect or resume: refresh the user (points). A 401 means the session ended.
+  // Locked: ignored, and a locked app is never signed out by a late 401 (S9).
   Future<void> _onSync() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.locked) return;
     try {
-      await context.read<AuthProvider>().refreshUser();
+      await auth.refreshUser();
     } on ApiException catch (e) {
-      if (e.statusCode == 401) _onSessionExpired();
+      if (e.statusCode == 401 && mounted && !auth.locked) _onSessionExpired();
     } catch (_) {
       // Offline or server down: the next sync retries.
     }
@@ -494,7 +532,7 @@ class _MainShellState extends State<_MainShell> with LiveSheets<_MainShell> {
 
   // Token refused (socket) or 401 (sync): close everything and log out once.
   void _onSessionExpired() {
-    if (!mounted || _expiring) return;
+    if (!mounted || _expiring || context.read<AuthProvider>().locked) return;
     _expiring = true;
     closeLiveSheets();
     Navigator.of(context).popUntil((r) => r.isFirst);

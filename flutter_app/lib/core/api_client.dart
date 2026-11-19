@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_models.dart';
 import 'budget_models.dart';
 import 'chat_chart.dart';
@@ -9,6 +8,7 @@ import 'login_challenge.dart';
 import 'offline_cache.dart';
 import 'receipt_model.dart';
 import 'stats_model.dart';
+import 'token_store.dart';
 import 'user_model.dart';
 
 const _kTimeout = Duration(seconds: 15);
@@ -54,40 +54,37 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-class ApiClient {
-  static const _tokenKey = 'nexus_token';
+/// Thrown instead of sending an authenticated request while the app is
+/// locked behind Face ID. Existing `catch (ApiException)` blocks treat it as
+/// a quiet failure.
+class SessionLockedException extends ApiException {
+  SessionLockedException() : super('Locked');
+}
 
+class ApiClient {
   /// The phone's offset in minutes east of UTC, sent so the server's "this
   /// month" matches the phone's.
   static int get tzOffsetMinutes => DateTime.now().timeZoneOffset.inMinutes;
 
-  // ── Token storage ──────────────────────────────────────────────
-  static Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-  }
+  // ── Token storage (TokenStore: the Keychain, Face ID) ───────────
+  static Future<void> saveToken(String token) => TokenStore.saveSession(token);
 
-  static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
-  }
+  static Future<String?> getToken() => TokenStore.getToken();
 
-  static Future<void> clearToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-  }
+  static Future<void> clearToken() => TokenStore.clearToken();
 
   /// A password change, an email change or turning two-step sign-in on ends
   /// every older session on the server, and the answer carries this device's
   /// new token. Saved before the caller gets the result, but only if the
-  /// saved token is still [before] (the one the request was sent with): a
-  /// logout or another sign-in while the request was in flight wins, so a
-  /// late answer can't sign the old account back in.
+  /// last saved token is still [before] (the one the request was sent with):
+  /// a logout or another sign-in while the request was in flight wins, so a
+  /// late answer can't sign the old account back in. A rotation that lands
+  /// while the app is locked is kept, but doesn't unlock it (S20).
   static Future<Map<String, dynamic>> _keepNewToken(
       Map<String, dynamic> data, String? before) async {
     final token = data['token'];
-    if (token is String && token.isNotEmpty && await getToken() == before) {
-      await saveToken(token);
+    if (token is String && token.isNotEmpty) {
+      await TokenStore.rotate(token, before: before);
     }
     return data;
   }
@@ -97,6 +94,9 @@ class ApiClient {
     final h = {'Content-Type': 'application/json'};
     if (auth) {
       final token = await getToken();
+      // Locked (Face ID): nothing goes out, so a locked app is never signed
+      // out by a 401 (S9).
+      if (TokenStore.isLocked) throw SessionLockedException();
       if (token != null) h['Authorization'] = 'Bearer $token';
     }
     return h;

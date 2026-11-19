@@ -7,6 +7,7 @@ import 'api_client.dart';
 import 'budget_models.dart';
 import 'constants.dart';
 import 'receipt_event.dart';
+import 'token_store.dart';
 
 /// The small part of a Socket.IO socket the service uses, so tests can pass a fake.
 abstract class RealtimeSocket {
@@ -46,10 +47,14 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
   RealtimeService({
     RealtimeSocketFactory? createSocket,
     Duration resumeSyncFallback = const Duration(seconds: 5),
-  })  : _createSocket = createSocket ?? _defaultSocket,
+  })  : _createSocket = createSocket ?? debugSocketFactory ?? _defaultSocket,
         _resumeSyncFallback = resumeSyncFallback {
     WidgetsBinding.instance.addObserver(this);
   }
+
+  /// Tests that build the whole app set this to a fake socket factory.
+  @visibleForTesting
+  static RealtimeSocketFactory? debugSocketFactory;
 
   final RealtimeSocketFactory _createSocket;
   // How long a resume waits for the reconnect before syncing over HTTP anyway
@@ -105,11 +110,14 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
         ),
       );
 
-  /// Connect with the saved token. Does nothing if there is no token.
+  /// Connect with the saved token. Does nothing if there is no token, or
+  /// while the app is locked behind Face ID (S8): a `whileTokenChanges` that
+  /// finishes during the lock must not reopen the socket.
   Future<void> start() async {
+    if (TokenStore.isLocked) return;
     _stopped = false;
     final token = await ApiClient.getToken();
-    if (_disposed || _stopped || token == null) return;
+    if (_disposed || _stopped || token == null || TokenStore.isLocked) return;
 
     _socket?.dispose();
     _hadConnected = false;
@@ -229,6 +237,8 @@ class RealtimeService extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Stopped: a sync now could hit a revoked session and log out by mistake.
     if (_disposed || _stopped || state != AppLifecycleState.resumed) return;
+    // Locked (AppLock ran first in this same callback): no sync, no reconnect.
+    if (TokenStore.isLocked) return;
     // The user was away: reload, even before the first connect. If the socket
     // has to reconnect, its connect does the sync (so it runs once, not twice);
     // if the reconnect is slow or blocked, sync over HTTP after a short wait.

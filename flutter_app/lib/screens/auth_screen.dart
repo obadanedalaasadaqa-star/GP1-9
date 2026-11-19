@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/auth_provider.dart';
+import '../core/biometric_service.dart';
 import '../core/constants.dart';
 import '../core/design.dart';
 import '../core/validators.dart';
+import '../widgets/face_id_glyph.dart';
+import '../widgets/notice_banner.dart';
 import '../widgets/password_meter.dart';
 import 'forgot_password_screen.dart';
 import 'verify_email_screen.dart';
@@ -34,7 +37,17 @@ class _AuthScreenState extends State<AuthScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
-    _tabs.addListener(() => setState(() => _error = null));
+    _tabs.addListener(() {
+      setState(() => _error = null);
+      context.read<AuthProvider>().clearBiometricNotice();
+    });
+    // Face ID locked cold start: prompt once by itself. The one-shot lives in
+    // AuthProvider, so rebuilds and tab switches never prompt again.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.showFacePill && auth.consumeAutoPrompt()) auth.unlockWithBiometrics();
+    });
   }
 
   @override
@@ -52,9 +65,11 @@ class _AuthScreenState extends State<AuthScreen>
   Future<void> _submit() async {
     // Close the keyboard first, so field errors and the error banner are in view.
     FocusManager.instance.primaryFocus?.unfocus();
+    final auth = context.read<AuthProvider>();
+    // A wrong password's coral banner takes the notice's place, never both.
+    auth.clearBiometricNotice();
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() { _loading = true; _error = null; });
-    final auth = context.read<AuthProvider>();
     try {
       if (_isRegister) {
         await auth.register(
@@ -79,9 +94,90 @@ class _AuthScreenState extends State<AuthScreen>
     }
   }
 
+  /// The design 1.6 notice copy ("Touch ID" on Touch ID phones).
+  static String _noticeText(BiometricNotice notice, String name) => switch (notice) {
+    BiometricNotice.sessionEnded => 'Your session ended. Sign in with your password.',
+    BiometricNotice.invalidated =>
+      '$name changed on this iPhone. Sign in with your password to turn it on again.',
+    BiometricNotice.lockout =>
+      '$name is locked. Sign in with your password, or unlock your iPhone and try again.',
+    BiometricNotice.notAvailable =>
+      '$name is off for Nexus in iPhone Settings. Sign in with your password.',
+    BiometricNotice.notEnrolled => "$name isn't set up on this iPhone. Sign in with your password.",
+    BiometricNotice.error => "$name didn't work this time. Sign in with your password.",
+  };
+
+  /// "Sign in with Face ID": the lime action while the session is Face ID
+  /// locked. Busy while the prompt (and the session check after it) runs.
+  Widget _facePill(AuthProvider auth, Nx nx) {
+    final name = auth.biometricName;
+    final busy = auth.unlocking;
+    // Busy keeps the look and ignores taps; a password sign-in disables it.
+    final VoidCallback? onTap = _loading ? null : (busy ? () {} : auth.unlockWithBiometrics);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4, bottom: 4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: const [
+            BoxShadow(color: AppColors.ink, offset: Offset(4, 4)),
+          ],
+        ),
+        child: Pressable(
+          onTap: onTap,
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('face-id-sign-in'),
+              onPressed: onTap,
+              style: NxButtonStyle.solid(nx,
+                fill: AppColors.lime, text: AppColors.ink, height: 56)
+                .copyWith(
+                  side: WidgetStateProperty.all(
+                    const BorderSide(color: AppColors.ink, width: 2)),
+                  textStyle: WidgetStateProperty.all(
+                    NxType.display(18, weight: FontWeight.w700,
+                      letterSpacing: -0.2))),
+              // Merged into the button: "Sign in with Face ID, Waiting for Face ID".
+              child: Semantics(
+                value: busy ? 'Waiting for $name' : null,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (busy)
+                      const SizedBox(width: 24, height: 24,
+                        child: Center(child: SizedBox(width: 20, height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5, color: AppColors.ink))))
+                    else if (auth.biometricAvailability.kind == BiometricKind.fingerprint)
+                      const ExcludeSemantics(
+                        child: Icon(Icons.fingerprint, size: 24, color: AppColors.ink))
+                    else
+                      const FaceIdGlyph(size: 24, color: AppColors.ink),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text('Sign in with $name',
+                        textAlign: TextAlign.center, maxLines: 2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final nx = Nx.of(context);
+    final auth = context.watch<AuthProvider>();
+    // The pill, the outline password button and the hidden "New here?" link
+    // go together (design R4). Never on Register, never off iOS (S21).
+    final showPill = auth.showFacePill && !_isRegister;
+    final notice = isIosPlatform && !_isRegister && _error == null ? auth.biometricNotice : null;
+    final hasBanner = _error != null || notice != null;
     final isDark = nx.dark;
     final border = nx.line;
     final textPrimary = nx.text;
@@ -222,6 +318,10 @@ class _AuthScreenState extends State<AuthScreen>
                           // 16, not 22: room for the forgot-password row, so Sign In
                           // still fits without scrolling at 393x852.
                           const SizedBox(height: 16),
+                          if (showPill) ...[
+                            _facePill(auth, nx),
+                            const SizedBox(height: 16),
+                          ],
 
                           Form(
                             key: _formKey,
@@ -315,6 +415,10 @@ class _AuthScreenState extends State<AuthScreen>
                                     textMuted: textMuted,
                                     track: nx.hairline),
 
+                                if (notice != null) ...[
+                                  const SizedBox(height: 16),
+                                  NxNoticeBanner(_noticeText(notice, auth.biometricName)),
+                                ],
                                 if (_error != null) ...[
                                   const SizedBox(height: 16),
                                   Container(
@@ -336,8 +440,26 @@ class _AuthScreenState extends State<AuthScreen>
                                   ),
                                 ],
 
-                                // The forgot-password row already gives the air on Sign In.
-                                SizedBox(height: _isRegister ? 22 : 0),
+                                // The forgot-password row already gives the air on Sign In;
+                                // a banner gets 12 so it never touches the button.
+                                SizedBox(height: _isRegister ? 22 : (hasBanner ? 12 : 0)),
+                                // Face ID locked: the password is the outline second
+                                // action, and "New here?" waits (the Register tab is there).
+                                if (showPill)
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton(
+                                      key: const ValueKey('password-sign-in'),
+                                      onPressed: _loading || auth.unlocking ? null : _submit,
+                                      style: NxButtonStyle.outline(nx),
+                                      child: _loading
+                                          ? SizedBox(width: 20, height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5, color: nx.text))
+                                          : const Text('Sign in with password'),
+                                    ),
+                                  )
+                                else ...[
                                 Padding(
                                   padding: const EdgeInsets.only(right: 4, bottom: 4),
                                   child: DecoratedBox(
@@ -370,6 +492,7 @@ class _AuthScreenState extends State<AuthScreen>
                                 ),
                                 const SizedBox(height: 14),
                                 Center(
+                                  key: const ValueKey('auth-switch-link'),
                                   child: TextButton(
                                     // 44 high like the forgot-password link (not
                                     // Material's padded 48), so Sign In fits at 393x852.
@@ -388,6 +511,7 @@ class _AuthScreenState extends State<AuthScreen>
                                         decorationColor: textPrimary)),
                                   ),
                                 ),
+                                ],
                               ],
                             ),
                           ),
@@ -428,6 +552,7 @@ class _AuthScreenState extends State<AuthScreen>
       obscureText: obscure,
       keyboardType: keyboard,
       validator: validator,
+      onChanged: (_) => context.read<AuthProvider>().clearBiometricNotice(),
       style: NxType.body(15.5, color: textPrimary),
       decoration: nxInput(Nx.of(context), hint: hint, suffix: suffix),
     );

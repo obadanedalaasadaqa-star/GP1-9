@@ -284,7 +284,7 @@ void main() {
     service.unauthorized.listen((_) => refused++);
     socket().fire('connect_error', {'message': 'unauthorized'});
 
-    SharedPreferences.setMockInitialValues({'nexus_token': 'new-token'});
+    await ApiClient.saveToken('new-token');
     await service.start();
     expect(sockets.first.disposed, isTrue);
     expect(sockets.last.token, 'new-token');
