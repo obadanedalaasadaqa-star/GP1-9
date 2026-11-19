@@ -30,7 +30,7 @@ function trustProxySetting() {
  * aiCaps: overrides of the daily AI caps (see routes/ai.js DEFAULT_AI_CAPS).
  * resetFloorMs: minimum time of a forgot/reset-password answer (default
  * 700 ms, lib/passwordReset.js); tests pass 0.
- * proxyCheck: true logs one "[proxy-check]" line for the first request
+ * proxyCheck: true logs one "[proxy-check]" line for the first proxied request
  * (index.js passes it; tests leave it off).
  * testRoutes: true mounts POST /api/receipts and /api/receipts/seed (tests
  * only; index.js never passes it, so production has neither route).
@@ -42,7 +42,7 @@ function createApp({ rateLimit, aiClient, aiCaps, resetFloorMs, proxyCheck = fal
 
   const trust = trustProxySetting();
   app.set('trust proxy', trust);
-  // One "[proxy-check]" line per process: the shape of the proxy chain (no
+  // One "[proxy-check]" line per process for the first proxied request: the shape of the chain (no
   // IP addresses), so TRUST_PROXY can be set from the Render logs.
   if (proxyCheck) app.use(proxyCheckMiddleware(trust));
   app.use(cors({ origin: '*' }));

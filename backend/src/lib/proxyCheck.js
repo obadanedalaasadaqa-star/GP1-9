@@ -56,12 +56,14 @@ function describeForwarding(req, trustSetting) {
   ].join(' ');
 }
 
-// Logs describeForwarding() for the first request this app sees, then never
-// again. log is injectable for tests.
+// Logs describeForwarding() for the first request that came through a proxy
+// (has X-Forwarded-For), then never again. Requests without the header, such
+// as Render's own internal health check, are skipped: they say nothing about
+// the chain. log is injectable for tests.
 function proxyCheckMiddleware(trustSetting, log = console.log) {
   let done = false;
   return (req, _res, next) => {
-    if (!done) {
+    if (!done && req.headers['x-forwarded-for'] !== undefined) {
       done = true;
       try { log(describeForwarding(req, trustSetting)); } catch { /* never block a request */ }
     }

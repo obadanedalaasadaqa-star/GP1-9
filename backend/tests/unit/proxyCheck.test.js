@@ -65,10 +65,24 @@ describe('proxyCheckMiddleware', () => {
     expect(log.mock.calls[0][0]).not.toContain('203.0.113.7');
   });
 
+  test('skips requests without X-Forwarded-For, then logs the first proxied one', async () => {
+    const log = jest.fn();
+    const app = express();
+    app.use(proxyCheckMiddleware(1, log));
+    app.get('/x', (req, res) => res.json({ ok: true }));
+    expect((await request(app).get('/x')).status).toBe(200);
+    expect((await request(app).get('/x')).status).toBe(200);
+    expect(log).not.toHaveBeenCalled();
+    await request(app).get('/x').set('X-Forwarded-For', '203.0.113.7, 10.0.0.1');
+    await request(app).get('/x').set('X-Forwarded-For', '198.51.100.2');
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0][0]).toMatch(/xff=2 kinds=public,private /);
+  });
+
   test('a throwing logger never blocks the request', async () => {
     const app = express();
     app.use(proxyCheckMiddleware(1, () => { throw new Error('boom'); }));
     app.get('/x', (req, res) => res.json({ ok: true }));
-    expect((await request(app).get('/x')).status).toBe(200);
+    expect((await request(app).get('/x').set('X-Forwarded-For', '8.8.8.8')).status).toBe(200);
   });
 });
