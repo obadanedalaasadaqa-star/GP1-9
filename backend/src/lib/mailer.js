@@ -188,6 +188,32 @@ async function sendPasswordChangedEmail(to, firstName) {
   });
 }
 
+// "Google is now connected" notice (Continue with Google linked to an
+// existing account). Sent to the account's stored address, never the
+// provider's. No code, no link. The advice names Forgot password because only
+// a reset removes the link.
+async function sendProviderLinkedEmail(to, firstName, providerLabel) {
+  if (!isMailConfigured()) {
+    console.log(`[mail:dev] ${providerLabel} connected notice for ${to}`);
+    return;
+  }
+
+  const advice = 'If this wasn\'t you, tap Forgot password on the Nexus sign-in screen to set a new ' +
+    'password, then use Sign out of all devices in Profile.';
+  await sendMail({
+    to,
+    toName: firstName,
+    subject: `${providerLabel} is now connected to Nexus`,
+    text:
+      `Marhaba ${firstName}, ${providerLabel} was just connected to your Nexus account, ` +
+      `so you can sign in with Continue with ${providerLabel}.\n\n${advice}`,
+    html: card(`
+        <p>Marhaba ${escapeHtml(firstName)}, ${escapeHtml(providerLabel)} was just connected to your
+          Nexus account, so you can sign in with Continue with ${escapeHtml(providerLabel)}.</p>
+        <p style="color:#8A9BB4;font-size:13px">${advice}</p>`),
+  });
+}
+
 // Copy of a receipt a store sent. items are the saved strings ("Milk x2").
 async function sendReceiptEmail(to, firstName, { storeName, items, totalAmount, pointsEarned, createdAt }) {
   const total = `${Number(totalAmount).toFixed(2)} JD`;
@@ -397,5 +423,6 @@ async function sendWeeklySummaryEmail(to, firstName, summary) {
 
 module.exports = {
   mailProvider, isMailConfigured, sendVerificationEmail, sendLoginCodeEmail, sendPasswordResetEmail,
-  sendPasswordChangedEmail, sendReceiptEmail, sendReportEmail, sendBudgetAlertEmail, sendWeeklySummaryEmail,
+  sendPasswordChangedEmail, sendProviderLinkedEmail, sendReceiptEmail, sendReportEmail, sendBudgetAlertEmail,
+  sendWeeklySummaryEmail,
 };

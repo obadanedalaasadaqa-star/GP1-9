@@ -11,6 +11,16 @@ const budgetRoutes   = require('./routes/budgets');
 const { makeLimiters } = require('./lib/rateLimit');
 const { proxyCheckMiddleware } = require('./lib/proxyCheck');
 const { getAiClient: realGetAiClient } = require('./lib/ai');
+const { verifyIdToken } = require('./lib/idToken');
+const { makeKeyStore } = require('./lib/jwks');
+const { PROVIDERS } = require('./lib/oauthProviders');
+
+// Google's signing keys, shared by every app in this process (one fetch per
+// cache lifetime, and at most one refetch a minute for unknown key ids).
+const googleKeys = makeKeyStore({ url: PROVIDERS.google.jwksUrl });
+const DEFAULT_ID_TOKEN_VERIFIERS = {
+  google: (idToken) => verifyIdToken(idToken, 'google', { getKey: googleKeys.getKey }),
+};
 
 // "trust proxy" from TRUST_PROXY (default 1 = one proxy hop, e.g. Render).
 // A number string becomes a number; anything else (e.g. "loopback") is passed as is.
@@ -34,8 +44,13 @@ function trustProxySetting() {
  * (index.js passes it; tests leave it off).
  * testRoutes: true mounts POST /api/receipts and /api/receipts/seed (tests
  * only; index.js never passes it, so production has neither route).
+ * idTokenVerifiers: { google(idToken) → claims } for POST /api/auth/google.
+ * undefined = the real verifier with Google's keys (lib/idToken.js); tests pass
+ * a fake, or the real verifier with a local key store.
  */
-function createApp({ rateLimit, aiClient, aiCaps, resetFloorMs, proxyCheck = false, testRoutes = false } = {}) {
+function createApp({
+  rateLimit, aiClient, aiCaps, resetFloorMs, proxyCheck = false, testRoutes = false, idTokenVerifiers,
+} = {}) {
   const app = express();
   const limiters = makeLimiters(rateLimit);
   const getAiClient = aiClient === undefined ? realGetAiClient : () => aiClient;
@@ -48,7 +63,9 @@ function createApp({ rateLimit, aiClient, aiCaps, resetFloorMs, proxyCheck = fal
   app.use(cors({ origin: '*' }));
   app.use(express.json());
 
-  app.use('/api/auth', authRoutes(limiters, { resetFloorMs }));
+  app.use('/api/auth', authRoutes(limiters, {
+    resetFloorMs, idTokenVerifiers: idTokenVerifiers ?? DEFAULT_ID_TOKEN_VERIFIERS,
+  }));
   app.use('/api/user', userRoutes(limiters));
   if (testRoutes === true) app.use('/api/receipts', receiptRoutes());
   app.use('/api/store', storeRoutes(limiters));

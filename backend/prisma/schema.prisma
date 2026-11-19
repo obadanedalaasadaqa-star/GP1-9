@@ -33,6 +33,8 @@ model User {
   loginTwoFactor        Boolean @default(false)
   // Session version (the "tv" claim). +1 ends every older session. Never returned.
   tokenVersion          Int     @default(0)
+  // false for accounts created by Google until a password is set (Forgot password).
+  passwordSet           Boolean @default(true)
 
   receipts          Receipt[]
   verificationCodes VerificationCode[]
@@ -41,6 +43,7 @@ model User {
   aiReports         AiReport[]
   budgets           Budget[]
   budgetAlerts      BudgetAlert[]
+  identities        AuthIdentity[]
 
   @@map("nexus_users")
 }
@@ -177,4 +180,24 @@ model BudgetAlert {
 
   @@id([userId, category, month, level])
   @@map("nexus_budget_alerts")
+}
+
+// Outside sign-in identities (Google; Apple later). subject and email are
+// personal data: never returned by a route, never logged.
+model AuthIdentity {
+  id         String   @id @default(uuid())
+  userId     String
+  // 'google' | 'apple'
+  provider   String
+  // The provider's stable user id ("sub")
+  subject    String
+  // The provider's email at link time (support only)
+  email      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  lastUsedAt DateTime @default(now()) @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject], map: "nexus_auth_identities_provider_subject_key")
+  @@unique([userId, provider], map: "nexus_auth_identities_user_provider_key")
+  @@map("nexus_auth_identities")
 }

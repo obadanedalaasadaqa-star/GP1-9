@@ -1,6 +1,5 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { randomUUID } = require('crypto');
 const prisma = require('../lib/prisma');
 const { passwordError } = require('../lib/password');
 const {
@@ -8,39 +7,22 @@ const {
 } = require('../lib/verification');
 const { normalizeEmail, emailError, findUserByEmail, emailTaken } = require('../lib/email');
 const { cleanName, nameError } = require('../lib/names');
-const { signSession, signChallenge, CHALLENGE_TTL_SECONDS } = require('../lib/token');
+const { signSession } = require('../lib/token');
 const {
-  isLoginTwoFactorAllowed, loginChallenge, loadChallengeUser, sendLoginCode, checkLoginCode,
+  loginChallenge, loadChallengeUser, sendLoginCode, checkLoginCode,
 } = require('../lib/loginTwoFactor');
+const { SAFE_USER_SELECT, safeUserOf, sessionOrChallenge } = require('../lib/sessionReply');
+const { generateSerial } = require('../lib/serial');
 const { disconnectUser } = require('../lib/realtime');
-const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../lib/mailer');
+const { sendPasswordResetEmail, sendPasswordChangedEmail, sendProviderLinkedEmail } = require('../lib/mailer');
+const { audiences } = require('../lib/oauthProviders');
+const { TOKEN_RE, MAX_TOKEN } = require('../lib/idToken');
+const { JwksUnavailable } = require('../lib/jwks');
+const { findOrLinkOrCreate } = require('../lib/oauthAccounts');
 const {
   RESET_TYPE, DEFAULT_FLOOR_MS, FORGOT_SENT, RESET_FAILED,
   looseEmailError, codeError, isResetEligible, padTo, errTag,
 } = require('../lib/passwordReset');
-
-const SAFE_USER_SELECT = {
-  id: true,
-  email: true,
-  name: true,
-  firstName: true,
-  lastName: true,
-  emailVerified: true,
-  serialNumber: true,
-  loyaltyPoints: true,
-  createdAt: true,
-  budgetAlertEmails: true,
-  weeklySummaryEmails: true,
-  loginTwoFactor: true,
-};
-
-function generateSerial() {
-  const part = randomUUID().replace(/-/g, '').toUpperCase().slice(0, 10);
-  return `NXS-${part.slice(0, 5)}-${part.slice(5)}`;
-}
-
-// Only the SAFE_USER_SELECT fields (never the hash or internal columns).
-const safeUserOf = (user) => Object.fromEntries(Object.keys(SAFE_USER_SELECT).map((k) => [k, user[k]]));
 
 const waitError = (waitSeconds) => ({
   error: `Please wait ${waitSeconds}s before requesting a new code.`,
@@ -51,9 +33,29 @@ const waitError = (waitSeconds) => ({
 // has an account, a code was just sent, or the send failed.
 const FORGOT_BODY = { message: FORGOT_SENT, expiresInSeconds: CODE_TTL_SECONDS };
 
+// POST /api/auth/google answers (design.md 1.6). The same text for every
+// token failure, so nothing tells a caller which check failed.
+const GOOGLE = {
+  failed: "Google sign-in didn't go through. Try again.",
+  unverified: "Your Google email isn't verified yet. Verify it in your Google account, then try again.",
+  passwordRequired: 'This email already has a Nexus account. Enter its password once to connect Google.',
+  wrongPassword: "That password doesn't match. Try again, or tap Forgot password.",
+  otherGoogle: 'This Nexus account is connected to a different Google account. Use that one, or sign in with your password.',
+  unavailable: "Google sign-in isn't available right now. Try again soon, or use your email and password.",
+  emailTaken: "Google sign-in can't be used with this email. Sign in with your email and password instead.",
+  error: "Sign-in didn't go through. Try again.",
+};
+const MAX_LINK_PASSWORD = 1024;
+
+// Outcome only, plus the Nexus user id when there is one. Never the token,
+// the Google subject, an email, the password or an error message.
+const googleLog = (outcome, userId) => console.log('[auth/google]', outcome, ...(userId ? [userId] : []));
+
 // Router factory: every createApp() gets its own router and limiters.
 // resetFloorMs: the minimum time of a forgot/reset answer (tests pass 0).
-module.exports = function authRoutes(limiters, { resetFloorMs = DEFAULT_FLOOR_MS } = {}) {
+// idTokenVerifiers: { google(idToken) → claims } (lib/idToken.js; tests pass
+// a fake). Throws IdTokenInvalid or JwksUnavailable.
+module.exports = function authRoutes(limiters, { resetFloorMs = DEFAULT_FLOOR_MS, idTokenVerifiers = {} } = {}) {
   const router = express.Router();
 
   // POST /api/auth/register
@@ -124,16 +126,7 @@ module.exports = function authRoutes(limiters, { resetFloorMs = DEFAULT_FLOOR_MS
       // Two-step sign-in is on: no session yet, only a 10-minute challenge.
       // No code is sent here; the app's code screen asks for one when it
       // opens, so every send goes through the precheck and limiter below.
-      if (user.loginTwoFactor && isLoginTwoFactorAllowed()) {
-        return res.json({
-          twoFactorRequired: true,
-          challengeToken: signChallenge(user),
-          method: 'email',
-          expiresInSeconds: CHALLENGE_TTL_SECONDS,
-        });
-      }
-
-      res.json({ token: signSession(user.id, user.tokenVersion), user: safeUserOf(user) });
+      res.json(sessionOrChallenge(user));
     } catch (err) {
       console.error('[login]', err);
       res.status(500).json({ error: 'Login failed. Please try again.' });
@@ -247,16 +240,23 @@ module.exports = function authRoutes(limiters, { resetFloorMs = DEFAULT_FLOOR_MS
       }
 
       const hash = await bcrypt.hash(newPassword, 12);
+      // Keep the user update first and the identity delete after it: a
+      // Google link holding the row lock makes this wait, and the later
+      // delete then sees and removes that link (G40 depends on the order).
       const [updated] = await prisma.$transaction([
         prisma.user.update({
           where: { id: user.id },
           // Typing a code sent to this address proves the inbox (Q2).
-          // loginTwoFactor is not touched: 2FA stays on.
-          data: { password: hash, tokenVersion: { increment: 1 }, emailVerified: true },
+          // loginTwoFactor is not touched: 2FA stays on. A Google-only
+          // account now has a password too (passwordSet).
+          data: { password: hash, tokenVersion: { increment: 1 }, emailVerified: true, passwordSet: true },
           select: { ...SAFE_USER_SELECT, tokenVersion: true, password: true },
         }),
         // Pending sign-in codes go too; old challenges die with the old hash.
         prisma.verificationCode.deleteMany({ where: { userId: user.id, type: 'login' } }),
+        // A reset fully evicts anyone who linked their Google account to this
+        // one (S15). The owner's next Continue with Google links again.
+        prisma.authIdentity.deleteMany({ where: { userId: user.id } }),
       ]);
       disconnectUser(user.id);
 
@@ -266,18 +266,94 @@ module.exports = function authRoutes(limiters, { resetFloorMs = DEFAULT_FLOOR_MS
 
       // Q1 (b): a 2FA user still needs the sign-in code. The challenge is
       // signed with the new hash.
-      if (updated.loginTwoFactor && isLoginTwoFactorAllowed()) {
-        return res.json({
-          twoFactorRequired: true,
-          challengeToken: signChallenge(updated),
-          method: 'email',
-          expiresInSeconds: CHALLENGE_TTL_SECONDS,
-        });
-      }
-      res.json({ token: signSession(updated.id, updated.tokenVersion), user: safeUserOf(updated) });
+      res.json(sessionOrChallenge(updated));
     } catch (err) {
       console.error('[reset-password]', user?.id ?? '-', errTag(err));
       res.status(500).json({ error: 'Reset failed. Please try again.' });
+    }
+  });
+
+  // A request with a password is the link step: it also counts toward the
+  // login limiter (failed answers only, like /login).
+  const loginLimiterIfPassword = (req, res, next) =>
+    (req.body?.password !== undefined ? limiters.login(req, res, next) : next());
+
+  // POST /api/auth/google { idToken, password? }
+  // Continue with Google: checks Google's ID token, then signs in to, links or
+  // creates the Nexus account (lib/oauthAccounts.js). Ends like /login: a
+  // session, or the two-step challenge.
+  router.post('/google', limiters.oauth, loginLimiterIfPassword, async (req, res) => {
+    // 1. Body shape: nothing else runs on a bad body.
+    const { idToken, password } = req.body ?? {};
+    if (typeof idToken !== 'string' || idToken.length < 1 || idToken.length > MAX_TOKEN || !TOKEN_RE.test(idToken)) {
+      return res.status(400).json({ error: GOOGLE.failed });
+    }
+    if (password !== undefined
+        && (typeof password !== 'string' || password.length < 1 || password.length > MAX_LINK_PASSWORD)) {
+      return res.status(400).json({ error: GOOGLE.failed });
+    }
+
+    // 2. Not set up on this server (no client ID): 503 before any check.
+    const verify = idTokenVerifiers.google;
+    if (audiences('google').length === 0 || typeof verify !== 'function') {
+      googleLog('not-configured');
+      return res.status(503).json({ error: GOOGLE.unavailable });
+    }
+
+    // 3. Google's token.
+    let claims;
+    try {
+      claims = await verify(idToken);
+    } catch (err) {
+      if (err instanceof JwksUnavailable) {
+        googleLog('jwks-unavailable');
+        return res.status(503).json({ error: GOOGLE.unavailable });
+      }
+      googleLog('invalid');
+      return res.status(401).json({ error: GOOGLE.failed });
+    }
+
+    // 4. Which account, then the same answer as /login.
+    try {
+      const result = await findOrLinkOrCreate('google', claims, { password });
+      if (result.refuse) {
+        googleLog(`refused:${result.refuse}`);
+        switch (result.refuse) {
+          case 'email_unverified':
+            return res.status(403).json({ error: GOOGLE.unverified, code: 'google_email_unverified' });
+          case 'other_google':
+            return res.status(409).json({ error: GOOGLE.otherGoogle, code: 'other_google' });
+          case 'password_required':
+            return res.status(409).json({ error: GOOGLE.passwordRequired, code: 'password_required', email: claims.email });
+          case 'wrong_password':
+            return res.status(401).json({ error: GOOGLE.wrongPassword, code: 'password_required', email: claims.email });
+          case 'email_taken':
+            // Older rows that differ only in letter case: no new account
+            // (as /register), and nothing says which rows exist.
+            return res.status(409).json({ error: GOOGLE.emailTaken, code: 'email_taken' });
+          default:
+            return res.status(500).json({ error: GOOGLE.error });
+        }
+      }
+
+      const { user, created, linked } = result;
+      if (linked) {
+        // The stored address and name from the DB, never Google's.
+        sendProviderLinkedEmail(user.email, user.firstName, 'Google')
+          .catch((err) => console.error('[auth/google] notice failed', user.id, errTag(err)));
+      }
+      const body = sessionOrChallenge(user);
+      // The code goes to the stored Nexus address, which can differ from the
+      // Google one, so the code screen names it. /login/send-code already
+      // tells any holder of this challenge the same address; /login's
+      // challenge doesn't need it (the user typed it).
+      if (body.twoFactorRequired) body.email = user.email;
+      googleLog(body.twoFactorRequired ? 'challenge' : created ? 'created' : linked ? 'linked' : 'signed-in', user.id);
+      if (created && !body.twoFactorRequired) return res.status(201).json({ ...body, created: true });
+      res.json(body);
+    } catch (err) {
+      console.error('[auth/google] error', errTag(err));
+      res.status(500).json({ error: GOOGLE.error });
     }
   });
 

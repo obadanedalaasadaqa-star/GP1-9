@@ -26,6 +26,7 @@ const SAFE_SELECT = {
   budgetAlertEmails: true,
   weeklySummaryEmails: true,
   loginTwoFactor: true,
+  passwordSet: true,
 };
 
 const NOTIFICATION_KEYS = ['budgetAlertEmails', 'weeklySummaryEmails', 'tzOffsetMinutes'];
@@ -97,6 +98,10 @@ module.exports = function userRoutes(limiters) {
       // surrounding spaces is not a change, and an older stored address is
       // never format-checked, so it can't block a name edit.
       if (email === normalizeEmail(current.email)) return next();
+      // An account made by Google has no password to confirm the change with.
+      if (current.passwordSet === false) {
+        return res.status(409).json({ error: 'Set a password before changing your email.', code: 'no_password' });
+      }
 
       const emailProblem = emailError(email);
       if (emailProblem) return res.status(400).json({ error: emailProblem });
@@ -256,6 +261,11 @@ module.exports = function userRoutes(limiters) {
     try {
       const user = await prisma.user.findUnique({ where: { id: req.userId } });
       if (!user) return res.status(404).json({ error: 'User not found.' });
+      // Google-only account: there is no current password to check. It sets
+      // one with Forgot password ("Set a password" in Profile).
+      if (user.passwordSet === false) {
+        return res.status(409).json({ error: 'You sign in with Google. Use Set a password in Profile first.', code: 'no_password' });
+      }
       if (!(await bcrypt.compare(currentPassword, user.password))) {
         return res.status(401).json({ error: 'Current password is incorrect.' });
       }
@@ -293,6 +303,11 @@ module.exports = function userRoutes(limiters) {
       if (!user) return res.status(404).json({ error: 'User not found.' });
 
       if (user.loginTwoFactor !== loginTwoFactor) {
+        // A Google-only account could never turn it off again (that needs
+        // the password), so it can't turn it on until it sets one.
+        if (loginTwoFactor && user.passwordSet === false) {
+          return res.status(403).json({ error: 'Set a password before turning on two-step sign-in.', code: 'no_password' });
+        }
         if (loginTwoFactor && !user.emailVerified) {
           return res.status(403).json({ error: 'Verify your email before turning on two-step sign-in.' });
         }

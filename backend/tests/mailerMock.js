@@ -10,6 +10,7 @@ const sentWeekly = [];
 const sentLogin = [];
 const sentReset = [];
 const sentPasswordChanged = [];
+const sentLinked = [];
 
 const sendVerificationEmail = jest.fn(async (to, firstName, code) => {
   sent.push({ to, firstName, code });
@@ -29,6 +30,11 @@ const sendPasswordResetEmail = jest.fn(async (to, firstName, code) => {
 // "Your password was changed" notices (POST /api/auth/reset-password).
 const sendPasswordChangedEmail = jest.fn(async (to, firstName) => {
   sentPasswordChanged.push({ to, firstName });
+});
+
+// "Google is now connected" notices (POST /api/auth/google, on a link).
+const sendProviderLinkedEmail = jest.fn(async (to, firstName, providerLabel) => {
+  sentLinked.push({ to, firstName, providerLabel });
 });
 
 // Make the next reset-code send reject (like a Brevo error that repeats the
@@ -83,6 +89,14 @@ function lastResetCodeFor(email) {
   return undefined;
 }
 
+// Last "connected" notice sent to [email], or undefined.
+function lastLinkedFor(email) {
+  for (let i = sentLinked.length - 1; i >= 0; i--) {
+    if (sentLinked[i].to === email) return sentLinked[i];
+  }
+  return undefined;
+}
+
 module.exports = {
   mailProvider: () => null,
   isMailConfigured: () => false,
@@ -94,6 +108,9 @@ module.exports = {
   failResetSendOnce,
   sendPasswordChangedEmail,
   sentPasswordChanged,
+  sendProviderLinkedEmail,
+  sentLinked,
+  lastLinkedFor,
   sendReceiptEmail,
   sentReceipts,
   sendReportEmail,

@@ -33,3 +33,7 @@ process.env.LOGIN_2FA = '';
 process.env.ANTHROPIC_API_KEY = '';
 process.env.AI_MODEL = '';
 process.env.AI_FALLBACKS = '';
+
+// Google sign-in: a fake client ID (never a real one, and too short to look
+// like one), so tests never depend on a developer's .env.
+process.env.GOOGLE_CLIENT_IDS = 'test-client.apps.googleusercontent.com';

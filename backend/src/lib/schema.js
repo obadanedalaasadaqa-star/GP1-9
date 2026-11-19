@@ -209,6 +209,33 @@ async function ensureSchema() {
   `);
   console.log('   DB: nexus_users tokenVersion column ready');
 
+  // Accounts created by "Continue with Google" have no password the user knows
+  // (the column holds the hash of random bytes): passwordSet is false until
+  // they set one with Forgot password. Every existing row has a real password.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE nexus_users
+      ADD COLUMN IF NOT EXISTS "passwordSet" BOOLEAN NOT NULL DEFAULT true;
+  `);
+  console.log('   DB: nexus_users passwordSet column ready');
+
+  // Outside sign-in identities (Google now, Apple later): one row per user and
+  // provider. subject is the provider's stable user id ("sub"); it and email
+  // are personal data and are never returned or logged.
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nexus_auth_identities (
+      id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      "userId"     TEXT        NOT NULL REFERENCES nexus_users(id) ON DELETE CASCADE,
+      provider     TEXT        NOT NULL CHECK (provider IN ('google', 'apple')),
+      subject      TEXT        NOT NULL,
+      email        TEXT,
+      "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "lastUsedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT nexus_auth_identities_provider_subject_key UNIQUE (provider, subject),
+      CONSTRAINT nexus_auth_identities_user_provider_key    UNIQUE ("userId", provider)
+    );
+  `);
+  console.log('   DB: nexus_auth_identities table ready');
+
   // The address an email code was sent to, so it only verifies that address.
   // NULL for sign-in codes and for codes from before this column.
   await prisma.$executeRawUnsafe(`

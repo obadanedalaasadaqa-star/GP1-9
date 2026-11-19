@@ -78,6 +78,11 @@ const DEFAULT_LIMITS = {
                             error: 'Too many attempts. Try again later.' },
   resetPasswordEmail:     { windowMs: 15 * MIN, limit: 10, byEmail: true,
                             error: 'Too many attempts. Try again later.' },
+  // POST /api/auth/google (no auth). Counts every request and runs before the
+  // token check, so garbage tokens and key-id probing are capped too. A
+  // request with a password (the link step) also passes the login limiter.
+  oauth:         { windowMs: 15 * MIN, limit: 30, byUser: false,
+                   error: 'Too many sign-in attempts. Try again in a few minutes.' },
   // GET /api/user/receipts (the Archive reloads on each period change and
   // realtime tick, so this leaves plenty of room).
   receiptsRead:  { windowMs: 10 * MIN, limit: 120, byUser: true,
@@ -126,7 +131,7 @@ function buildLimiter(name, {
  * loginVerifyCode, security, passwordCheck, storeAuth, storeReceipts, aiInsight, aiChat,
  * aiReport, aiReportEmail, forgotPasswordIp, forgotPasswordEmail,
  * forgotPasswordEmailDay, resetPasswordIp, resetPasswordEmail, budgets,
- * receiptsRead } middlewares.
+ * oauth, receiptsRead } middlewares.
  * overrides: false = no limits (tests), or e.g. { login: { limit: 3 } }
  * to change windowMs/limit per limiter.
  */

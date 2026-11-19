@@ -209,6 +209,41 @@ describe('sendPasswordChangedEmail', () => {
   });
 });
 
+// U25 (phase 12, S16/S40): the "Google is now connected" notice. Q-F: the
+// advice names Forgot password, because only a reset removes the link.
+describe('sendProviderLinkedEmail', () => {
+  const ADVICE = "If this wasn't you, tap Forgot password on the Nexus sign-in screen to set a new " +
+    'password, then use Sign out of all devices in Profile.';
+
+  test('dev mode prints one notice line and sends nothing', async () => {
+    const mailer = loadMailer({});
+    await mailer.sendProviderLinkedEmail('a@example.com', 'Sara', 'Google');
+    expect(console.log).toHaveBeenCalledWith('[mail:dev] Google connected notice for a@example.com');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("Brevo: design's subject and body, no code or link, name escaped", async () => {
+    const mailer = loadMailer(BREVO);
+    await mailer.sendProviderLinkedEmail('a@example.com', 'Sara', 'Google');
+    const body = lastBrevoBody();
+    expect(body.subject).toBe('Google is now connected to Nexus');
+    expect(body.textContent).toBe(
+      'Marhaba Sara, Google was just connected to your Nexus account, so you can sign in with ' +
+      `Continue with Google.\n\n${ADVICE}`,
+    );
+    expect(body.textContent).toContain(ADVICE);
+    expect(body.htmlContent).toContain(ADVICE);
+    expect(body.textContent).not.toContain('reset your password');
+    expect(body.htmlContent).not.toContain('reset your password');
+    expect(body.textContent).not.toMatch(/\d{6}|https?:/);
+    expect(body.htmlContent).not.toMatch(/\d{6}|href=/);
+
+    await mailer.sendProviderLinkedEmail('a@example.com', '<b>x</b>', 'Google');
+    expect(lastBrevoBody().htmlContent).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(lastBrevoBody().htmlContent).not.toContain('<b>x</b>');
+  });
+});
+
 describe('sendReportEmail', () => {
   const report = (ai = {
     status: 'ready', headline: 'You spent 287.99 JD.', narrative: 'Mostly <b>Electronics</b>.', tips: ['Plan ahead.'],
