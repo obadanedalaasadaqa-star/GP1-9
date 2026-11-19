@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'biometric_service.dart';
+import 'google_auth_service.dart';
+import 'google_sign_in_result.dart';
 import 'login_challenge.dart';
 import 'offline_cache.dart';
 import 'secure_store.dart';
@@ -16,6 +18,8 @@ const _kUnreachable = "Can't reach the Nexus server. Check your connection and t
 // waking-server splash takes over.
 const _kUnlockSplashDelay = Duration(seconds: 2);
 const _kDeclinedKey = 'nexus_bio_declined';
+// The Google token held for the "Connect Google" password step (S29).
+const _kGoogleHoldFor = Duration(minutes: 10);
 
 /// The amber notice on the sign-in tab after Face ID couldn't be used.
 enum BiometricNotice { sessionEnded, invalidated, lockout, notAvailable, notEnrolled, error }
@@ -39,6 +43,15 @@ class AuthProvider extends ChangeNotifier {
   bool _unlocking = false;
   BiometricNotice? _biometricNotice;
   BiometricAvailability _availability = BiometricAvailability.notIos;
+
+  // Continue with Google. The pending token lives only in this field, only
+  // between a "password needed" answer and the password step (S29).
+  final GoogleAuthService _google;
+  ({String idToken, String email, DateTime at})? _pendingGoogle;
+
+  /// The clock for the 10-minute hold (tests move it).
+  @visibleForTesting
+  static DateTime Function() clock = DateTime.now;
 
   User? get user => _user;
   bool get loading => _loading;
@@ -116,8 +129,90 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  AuthProvider() {
+  /// [google]: Continue with Google (the plugin by default; tests pass a fake).
+  AuthProvider({GoogleAuthService? google}) : _google = google ?? defaultGoogleAuthService() {
+    _loadGoogle();
     _init();
+  }
+
+  // ── Continue with Google ───────────────────────────────────────
+
+  /// The Google button shows: iOS with a real client ID in the build.
+  bool get googleAvailable => _google.available;
+
+  /// Reads the client ID once, off the start-up path.
+  Future<void> _loadGoogle() async {
+    try {
+      await _google.load();
+    } catch (_) {
+      return;
+    }
+    if (_google.available) notifyListeners();
+  }
+
+  /// Google's sheet, then the Nexus server. Null when signed in (through
+  /// [completeLogin], like a password sign-in), when the sheet was cancelled,
+  /// or when Google isn't available. A [GoogleChallenge] (two-step sign-in
+  /// on) or [GooglePasswordNeeded] (the link sheet) otherwise. Throws
+  /// [GoogleAuthFailure] when Google's sheet failed, [ApiException] for the
+  /// server's refusals.
+  Future<GoogleSignInResult?> signInWithGoogle() async {
+    if (!googleAvailable) return null;
+    _pendingGoogle = null;
+    final id = await _google.signIn();
+    switch (id) {
+      case GoogleCancelled():
+        return null;
+      case GoogleFailed(:final kind):
+        throw GoogleAuthFailure(kind);
+      case GoogleIdToken(:final idToken, :final email):
+        return _sendGoogle(idToken, email: email);
+    }
+  }
+
+  /// The link sheet's "Connect Google": the held token again, with the Nexus
+  /// password. [GoogleTokenExpired] without a request when the token is gone
+  /// or older than 10 minutes. The password is never kept.
+  Future<GoogleSignInResult?> continueGoogleWithPassword(String password) async {
+    final held = _pendingGoogle;
+    if (held == null || clock().difference(held.at) >= _kGoogleHoldFor) {
+      _pendingGoogle = null;
+      return const GoogleTokenExpired();
+    }
+    return _sendGoogle(held.idToken, email: held.email, password: password);
+  }
+
+  /// Cancel, swipe-down or Forgot password in the link sheet.
+  void dropPendingGoogle() => _pendingGoogle = null;
+
+  Future<GoogleSignInResult?> _sendGoogle(String idToken, {required String email, String? password}) async {
+    final GoogleSignInResult result;
+    try {
+      result = await ApiClient.googleSignIn(idToken, password: password, email: email);
+    } on ApiException catch (e) {
+      // No connection or 429 keep the link sheet open (and the token, for a
+      // retry); every other refusal ends the attempt.
+      if (e.fromServer && e.statusCode != 429) _pendingGoogle = null;
+      rethrow;
+    }
+    switch (result) {
+      case GoogleSession(:final token, :final user, :final created):
+        _pendingGoogle = null;
+        // S30: a new account never inherits Face ID (as register).
+        if (created) await TokenStore.forgetProtection();
+        await completeLogin(token, user);
+        return null;
+      case GoogleChallenge():
+        _pendingGoogle = null;
+        return result;
+      case GooglePasswordNeeded():
+        // Held from the first answer; a wrong password keeps the same one.
+        _pendingGoogle ??= (idToken: idToken, email: result.email.isEmpty ? email : result.email, at: clock());
+        return result;
+      case GoogleTokenExpired():
+        _pendingGoogle = null;
+        return result;
+    }
   }
 
   Future<void> _init() async {
@@ -488,6 +583,10 @@ class AuthProvider extends ChangeNotifier {
   /// "Sign in with password" lands on a plain sign-in tab.
   Future<void> logout() async {
     _session++;
+    _pendingGoogle = null;
+    // S31: local Google sign out too (never disconnect); errors ignored.
+    // Skipped when Google isn't set up in this build.
+    if (_google.available) unawaited(_google.signOut().catchError((Object _) {}));
     await ApiClient.clearToken();
     await OfflineCache.clear();
     _user = null;
