@@ -10,6 +10,7 @@ import '../core/realtime_service.dart';
 import '../core/theme_provider.dart';
 import '../widgets/budgets_alerts_card.dart';
 import '../widgets/security_card.dart';
+import 'forgot_password_screen.dart';
 import 'profile_edit_screens.dart';
 import 'verify_email_screen.dart';
 
@@ -226,8 +227,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _linkRow('Edit name and email',
                     () => EditProfileScreen.open(context)),
                   const NxRowDivider(),
-                  _linkRow('Change password',
-                    () => ChangePasswordScreen.open(context)),
+                  // An account made with Google has no password to change:
+                  // it sets one through Forgot password instead.
+                  if (user.passwordSet)
+                    _linkRow('Change password',
+                      () => ChangePasswordScreen.open(context))
+                  else
+                    _linkRow('Set a password',
+                      () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ForgotPasswordScreen(
+                          initialEmail: user.email, setPassword: true))),
+                      key: const ValueKey('profile-set-password'),
+                      line: 'You sign in with Google. Add a password to sign in with your email too.'),
                 ],
               ),
               const SizedBox(height: 14),
@@ -301,20 +312,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
   );
 
   /// A settings row that opens its own screen.
-  Widget _linkRow(String label, VoidCallback onTap) {
+  /// A tappable row with a chevron, and an optional muted second [line].
+  Widget _linkRow(String label, VoidCallback onTap, {Key? key, String? line}) {
     final nx = Nx.of(context);
-    return Pressable(
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(label, style: NxType.body(14.5,
-                weight: FontWeight.w700, color: nx.text)),
+    final title = Text(label, style: NxType.body(14.5,
+      weight: FontWeight.w700, color: nx.text));
+    return Semantics(
+      button: true,
+      child: Pressable(
+        key: key,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 52),
+          child: Padding(
+            // The two-line row gets air so its text never touches the dividers.
+            padding: EdgeInsets.symmetric(vertical: line == null ? 0 : 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: line == null
+                      ? title
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            title,
+                            const SizedBox(height: 2),
+                            Text(line, style: NxType.body(12.5, color: nx.muted)),
+                          ],
+                        ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: nx.text),
+              ],
             ),
-            Icon(Icons.chevron_right_rounded, color: nx.text),
-          ],
+          ),
         ),
       ),
     );

@@ -38,3 +38,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons/
+    # Third-party brand marks, from the owner's own download bundle (Google's
+    # "G", only inside the Continue with Google button).
+    - assets/brand/

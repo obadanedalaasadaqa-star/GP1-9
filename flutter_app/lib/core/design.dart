@@ -55,6 +55,13 @@ class NxType {
         fontSize: size, fontWeight: weight, color: color,
         letterSpacing: letterSpacing);
 
+  /// The "Continue with Google" label, used only by GoogleSignInButton.
+  /// Google asks for Google Sans Medium; its only OFL file is a variable font
+  /// under Google's trademark terms, so the approved fallback is used (D1):
+  /// Instrument Sans 15, w600.
+  static TextStyle googleButton(Color color) =>
+      body(15, color: color, weight: FontWeight.w600, height: 20 / 15);
+
   /// Small spaced mono label, like the header line on a till slip. Use it
   /// for UPPERCASE text only: tracking lowercase letters hurts reading.
   static TextStyle label(Color color) =>

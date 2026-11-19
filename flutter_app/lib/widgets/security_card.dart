@@ -8,6 +8,7 @@ import '../core/design.dart';
 import '../core/realtime_service.dart';
 import '../core/theme_provider.dart';
 import '../core/user_model.dart';
+import '../screens/forgot_password_screen.dart';
 import '../screens/verify_email_screen.dart';
 
 /// Profile's "SIGN-IN SECURITY" card: the opt-in two-step sign-in switch.
@@ -136,9 +137,12 @@ class _SecurityCardState extends State<SecurityCard> {
     final textPrimary = isDark ? AppColors.textPrimary : AppColors.textPrimaryLight;
     final textMuted   = isDark ? AppColors.textMuted   : AppColors.textMutedLight;
     final verified = user.emailVerified;
+    // An account made with Google has no password: it could never turn this
+    // off again, so it sets a password first (the server says the same).
+    final noPassword = !user.passwordSet;
     final value = _pending ?? user.loginTwoFactor;
     // Unverified but already on should not happen, but turning off stays possible.
-    final enabled = _pending == null && (verified || user.loginTwoFactor);
+    final enabled = _pending == null && (user.loginTwoFactor || (verified && !noPassword));
 
     return NxProfileCard(
         children: [
@@ -168,7 +172,28 @@ class _SecurityCardState extends State<SecurityCard> {
               ],
             ),
           ),
-          if (!verified)
+          // Both missing: only the password line, it's the first step.
+          if (noPassword && !user.loginTwoFactor)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Set a password to turn this on',
+                      style: NxType.body(12.5, color: textMuted)),
+                  ),
+                  TextButton(
+                    key: const ValueKey('security-set-password'),
+                    style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ForgotPasswordScreen(initialEmail: user.email, setPassword: true))),
+                    child: Text('Set a password',
+                      style: NxType.body(13.5, weight: FontWeight.w700, color: Nx.of(context).accent)),
+                  ),
+                ],
+              ),
+            )
+          else if (!verified)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(

@@ -10,7 +10,11 @@ import 'reset_password_screen.dart';
 class ForgotPasswordScreen extends StatefulWidget {
   /// What was typed on the sign-in form (may be empty).
   final String initialEmail;
-  const ForgotPasswordScreen({super.key, this.initialEmail = ''});
+
+  /// Opened from Profile by an account made with Google ("Set a password"):
+  /// the same flow, worded for someone who never had a password.
+  final bool setPassword;
+  const ForgotPasswordScreen({super.key, this.initialEmail = '', this.setPassword = false});
 
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
@@ -53,10 +57,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final nx = Nx.of(context);
+    final set = widget.setPassword;
     return ResetFrame(
-      title: 'Reset your password',
-      backTooltip: 'Back to sign in',
-      intro: Text("Enter the email you signed up with. We'll send you a 6-digit code.",
+      title: set ? 'Set a password' : 'Reset your password',
+      backTooltip: set ? 'Back to Profile' : 'Back to sign in',
+      intro: Text(
+        set
+            ? "We'll email a 6-digit code to this address. Enter it on the next screen with your new password."
+            : "Enter the email you signed up with. We'll send you a 6-digit code.",
         style: NxType.body(15, color: nx.muted, height: 1.45)),
       children: [
         const SizedBox(height: 22),

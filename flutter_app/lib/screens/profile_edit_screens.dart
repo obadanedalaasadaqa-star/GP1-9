@@ -9,6 +9,7 @@ import '../core/realtime_service.dart';
 import '../core/user_model.dart';
 import '../core/validators.dart';
 import '../widgets/password_meter.dart';
+import 'forgot_password_screen.dart';
 import 'verify_email_screen.dart';
 
 /// Pushes [screen] with the caller's RealtimeService (a pushed route does
@@ -110,12 +111,14 @@ mixin _FormBits<T extends StatefulWidget> on State<T> {
     required Color textMuted,
     TextInputType keyboard = TextInputType.text,
     bool obscure = false,
+    bool readOnly = false,
     Widget? suffix,
     String? Function(String?)? validator,
   }) =>
     TextFormField(
       controller: ctrl,
       obscureText: obscure,
+      readOnly: readOnly,
       keyboardType: keyboard,
       validator: validator,
       style: NxType.body(15.5, color: textPrimary),
@@ -223,6 +226,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     final textPrimary = nx.text;
     final textMuted = nx.muted;
     final textDim = nx.muted;
+    // An account made with Google has no password to confirm an email change
+    // with: the email is read-only until one is set (the server agrees).
+    final noPassword = !(context.watch<AuthProvider>().user?.passwordSet ?? true);
     return _EditFrame(
       title: 'Edit name and email',
       child: Form(
@@ -260,8 +266,16 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                         _fieldLabel('Email', textDim),
                         _input(_emailCtrl, 'you@example.com',
                           keyboard: TextInputType.emailAddress,
+                          readOnly: noPassword,
                           isDark: isDark, border: border,
-                          textPrimary: textPrimary, textMuted: textMuted,
+                          textPrimary: noPassword ? textMuted : textPrimary, textMuted: textMuted,
+                          suffix: noPassword
+                              ? Semantics(
+                                  label: "Email can't be changed yet",
+                                  child: Tooltip(
+                                    message: "Email can't be changed yet",
+                                    child: Icon(Icons.lock_outline, size: 18, color: textMuted)))
+                              : null,
                           // The strict check only for a new address, so an older
                           // account's stored email never blocks a name edit.
                           validator: (v) {
@@ -269,7 +283,24 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                             if (_emailChanged) return validateEmail(v);
                             return null;
                           }),
-                        if (_emailChanged) ...[
+                        if (noPassword) ...[
+                          const SizedBox(height: 6),
+                          Text('You sign in with Google. Set a password to change your email.',
+                            style: NxType.body(12.5, color: textMuted)),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              key: const ValueKey('edit-set-password'),
+                              style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+                              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => ForgotPasswordScreen(
+                                  initialEmail: _emailCtrl.text.trim(), setPassword: true))),
+                              child: Text('Set a password',
+                                style: NxType.body(13.5, weight: FontWeight.w700, color: nx.accent)),
+                            ),
+                          ),
+                        ],
+                        if (_emailChanged && !noPassword) ...[
                           const SizedBox(height: 14),
                           _fieldLabel('Current Password', textDim),
                           _input(_passwordCtrl, 'Required to change your email',

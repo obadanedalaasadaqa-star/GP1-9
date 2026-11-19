@@ -7,8 +7,11 @@ import '../core/auth_provider.dart';
 import '../core/biometric_service.dart';
 import '../core/constants.dart';
 import '../core/design.dart';
+import '../core/google_sign_in_result.dart';
 import '../core/validators.dart';
 import '../widgets/face_id_glyph.dart';
+import '../widgets/google_password_sheet.dart';
+import '../widgets/google_sign_in_button.dart';
 import '../widgets/notice_banner.dart';
 import '../widgets/password_meter.dart';
 import 'forgot_password_screen.dart';
@@ -16,6 +19,11 @@ import 'verify_email_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
+
+  /// The amber Face ID notice text (design 1.6), for tests.
+  @visibleForTesting
+  static String noticeTextFor(BiometricNotice notice, String name, {bool google = false}) =>
+      _AuthScreenState._noticeText(notice, name, google: google);
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
@@ -33,12 +41,21 @@ class _AuthScreenState extends State<AuthScreen>
   String? _error;
   bool _obscure = true;
 
+  // Continue with Google: busy while Google's sheet is up and Nexus checks
+  // the token; its banner (coral or amber, design 1.6) takes the one banner
+  // spot like _error.
+  bool _googleBusy = false;
+  ({String text, bool error})? _googleNotice;
+
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
     _tabs.addListener(() {
-      setState(() => _error = null);
+      setState(() {
+        _error = null;
+        _googleNotice = null;
+      });
       context.read<AuthProvider>().clearBiometricNotice();
     });
     // Face ID locked cold start: prompt once by itself. The one-shot lives in
@@ -68,6 +85,7 @@ class _AuthScreenState extends State<AuthScreen>
     final auth = context.read<AuthProvider>();
     // A wrong password's coral banner takes the notice's place, never both.
     auth.clearBiometricNotice();
+    if (_googleNotice != null) setState(() => _googleNotice = null);
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() { _loading = true; _error = null; });
     try {
@@ -94,8 +112,86 @@ class _AuthScreenState extends State<AuthScreen>
     }
   }
 
-  /// The design 1.6 notice copy ("Touch ID" on Touch ID phones).
-  static String _noticeText(BiometricNotice notice, String name) => switch (notice) {
+  /// Continue with Google: Google's sheet, then the Nexus server. A
+  /// challenge opens the code screen; "password needed" opens the link sheet.
+  Future<void> _google() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final auth = context.read<AuthProvider>();
+    auth.clearBiometricNotice();
+    setState(() {
+      _googleBusy = true;
+      _error = null;
+      _googleNotice = null;
+    });
+    try {
+      final result = await auth.signInWithGoogle();
+      if (!mounted) return;
+      setState(() => _googleBusy = false);
+      switch (result) {
+        case GoogleChallenge(:final challenge):
+          await VerifyEmailScreen.openLogin(context, challenge);
+        case GooglePasswordNeeded(:final email):
+          await _link(email);
+        case GoogleTokenExpired():
+          setState(() => _googleNotice = (
+            text: 'That took a while, so Google needs to check again. Tap Continue with Google.',
+            error: false));
+        case GoogleSession():
+        case null:
+          break; // signed in (the shell takes over), or cancelled: no message
+      }
+    } catch (e) {
+      if (mounted) setState(() => _googleNotice = googleNoticeFor(e));
+    } finally {
+      if (mounted && _googleBusy) setState(() => _googleBusy = false);
+    }
+  }
+
+  /// "Connect Google to your account": the Google email already has a Nexus
+  /// account. Every way out that isn't a sign-in drops the held token.
+  Future<void> _link(String email) async {
+    final auth = context.read<AuthProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final outcome = await GooglePasswordSheet.show(context, email: email);
+    switch (outcome) {
+      case GoogleLinkDone():
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Google is connected. Next time, just tap Continue with Google.')));
+      case GoogleLinkChallenge(:final challenge):
+        if (mounted) await VerifyEmailScreen.openLogin(context, challenge);
+      case GoogleLinkNotice(:final text, :final error):
+        auth.dropPendingGoogle();
+        if (mounted) setState(() => _googleNotice = (text: text, error: error));
+      case GoogleLinkForgot():
+        auth.dropPendingGoogle();
+        await navigator.push(MaterialPageRoute(
+          builder: (_) => ForgotPasswordScreen(initialEmail: email)));
+      case null:
+        auth.dropPendingGoogle();
+    }
+  }
+
+  /// The design 1.6 notice copy ("Touch ID" on Touch ID phones). With the
+  /// Google button shown, "with your password" becomes "with your password
+  /// or with Google" (a Google-only account has no password).
+  static String _noticeText(BiometricNotice notice, String name, {bool google = false}) =>
+      google ? _noticeTextGoogle(notice, name) : _noticeTextPassword(notice, name);
+
+  static String _noticeTextGoogle(BiometricNotice notice, String name) => switch (notice) {
+    BiometricNotice.sessionEnded => 'Your session ended. Sign in with your password or with Google.',
+    BiometricNotice.invalidated =>
+      '$name changed on this iPhone. Sign in with your password or with Google to turn it on again.',
+    BiometricNotice.lockout =>
+      '$name is locked. Sign in with your password or with Google, or unlock your iPhone and try again.',
+    BiometricNotice.notAvailable =>
+      '$name is off for Nexus in iPhone Settings. Sign in with your password or with Google.',
+    BiometricNotice.notEnrolled =>
+      "$name isn't set up on this iPhone. Sign in with your password or with Google.",
+    BiometricNotice.error => "$name didn't work this time. Sign in with your password or with Google.",
+  };
+
+  static String _noticeTextPassword(BiometricNotice notice, String name) => switch (notice) {
     BiometricNotice.sessionEnded => 'Your session ended. Sign in with your password.',
     BiometricNotice.invalidated =>
       '$name changed on this iPhone. Sign in with your password to turn it on again.',
@@ -113,7 +209,7 @@ class _AuthScreenState extends State<AuthScreen>
     final name = auth.biometricName;
     final busy = auth.unlocking;
     // Busy keeps the look and ignores taps; a password sign-in disables it.
-    final VoidCallback? onTap = _loading ? null : (busy ? () {} : auth.unlockWithBiometrics);
+    final VoidCallback? onTap = _loading || _googleBusy ? null : (busy ? () {} : auth.unlockWithBiometrics);
     return Padding(
       padding: const EdgeInsets.only(right: 4, bottom: 4),
       child: DecoratedBox(
@@ -176,8 +272,11 @@ class _AuthScreenState extends State<AuthScreen>
     // The pill, the outline password button and the hidden "New here?" link
     // go together (design R4). Never on Register, never off iOS (S21).
     final showPill = auth.showFacePill && !_isRegister;
-    final notice = isIosPlatform && !_isRegister && _error == null ? auth.biometricNotice : null;
-    final hasBanner = _error != null || notice != null;
+    final showGoogle = auth.googleAvailable;
+    final googleNotice = _error == null ? _googleNotice : null;
+    final notice = isIosPlatform && !_isRegister && _error == null && googleNotice == null
+        ? auth.biometricNotice : null;
+    final hasBanner = _error != null || googleNotice != null || notice != null;
     final isDark = nx.dark;
     final border = nx.line;
     final textPrimary = nx.text;
@@ -286,7 +385,11 @@ class _AuthScreenState extends State<AuthScreen>
                       ),
                       padding: EdgeInsets.fromLTRB(
                         22, 22, 22, 24 + padding.bottom),
-                      child: Column(
+                      // While Google is busy, nothing else on the sheet takes
+                      // a tap (one sign-in at a time).
+                      child: AbsorbPointer(
+                        absorbing: _googleBusy,
+                        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // Tab bar
@@ -417,27 +520,16 @@ class _AuthScreenState extends State<AuthScreen>
 
                                 if (notice != null) ...[
                                   const SizedBox(height: 16),
-                                  NxNoticeBanner(_noticeText(notice, auth.biometricName)),
+                                  NxNoticeBanner(_noticeText(notice, auth.biometricName,
+                                    google: showGoogle)),
+                                ],
+                                if (googleNotice != null) ...[
+                                  const SizedBox(height: 16),
+                                  NxNoticeBanner(googleNotice.text, error: googleNotice.error),
                                 ],
                                 if (_error != null) ...[
                                   const SizedBox(height: 16),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 11),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.coral,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: AppColors.ink, width: 2),
-                                    ),
-                                    child: Row(children: [
-                                      const Icon(Icons.error_outline,
-                                        color: AppColors.ink, size: 18),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(_error!,
-                                        style: NxType.body(13.5,
-                                          weight: FontWeight.w600, color: AppColors.ink))),
-                                    ]),
-                                  ),
+                                  NxNoticeBanner(_error!, error: true),
                                 ],
 
                                 // The forgot-password row already gives the air on Sign In;
@@ -490,6 +582,19 @@ class _AuthScreenState extends State<AuthScreen>
                                     ),
                                   ),
                                 ),
+                                ],
+                                // Continue with Google under the main button (or the
+                                // outline password button), never next to the Face ID
+                                // pill (S32). It replaces the switch link: the tab bar
+                                // already does that job (design 1.3).
+                                // Gap 10, not 12: the design's fallback, because 12
+                                // made the Sign In tab scroll 1 pt at 393x852.
+                                if (showGoogle) ...[
+                                  const SizedBox(height: 10),
+                                  GoogleSignInButton(
+                                    busy: _googleBusy,
+                                    onPressed: _loading || auth.unlocking ? null : _google),
+                                ] else if (!showPill) ...[
                                 const SizedBox(height: 14),
                                 Center(
                                   key: const ValueKey('auth-switch-link'),
@@ -516,6 +621,7 @@ class _AuthScreenState extends State<AuthScreen>
                             ),
                           ),
                         ],
+                      ),
                       ),
                     ),
                   ),
@@ -552,7 +658,10 @@ class _AuthScreenState extends State<AuthScreen>
       obscureText: obscure,
       keyboardType: keyboard,
       validator: validator,
-      onChanged: (_) => context.read<AuthProvider>().clearBiometricNotice(),
+      onChanged: (_) {
+        context.read<AuthProvider>().clearBiometricNotice();
+        if (_googleNotice != null) setState(() => _googleNotice = null);
+      },
       style: NxType.body(15.5, color: textPrimary),
       decoration: nxInput(Nx.of(context), hint: hint, suffix: suffix),
     );
