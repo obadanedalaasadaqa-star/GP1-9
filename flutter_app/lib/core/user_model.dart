@@ -18,6 +18,11 @@ class User {
   /// Two-step sign-in (opt-in): an emailed code at every password login.
   final bool loginTwoFactor;
 
+  /// False for an account made with Continue with Google until the user sets
+  /// a password (Profile → Set a password). Missing (old caches, an older
+  /// backend) means true, so those look as before.
+  final bool passwordSet;
+
   const User({
     required this.id,
     required this.email,
@@ -31,6 +36,7 @@ class User {
     this.budgetAlertEmails = true,
     this.weeklySummaryEmails = false,
     this.loginTwoFactor = false,
+    this.passwordSet = true,
   });
 
   factory User.fromJson(Map<String, dynamic> j) {
@@ -51,6 +57,7 @@ class User {
       budgetAlertEmails: j['budgetAlertEmails'] as bool? ?? true,
       weeklySummaryEmails: j['weeklySummaryEmails'] as bool? ?? false,
       loginTwoFactor: j['loginTwoFactor'] as bool? ?? false,
+      passwordSet: j['passwordSet'] as bool? ?? true,
     );
   }
 
@@ -67,6 +74,7 @@ class User {
     'budgetAlertEmails': budgetAlertEmails,
     'weeklySummaryEmails': weeklySummaryEmails,
     'loginTwoFactor': loginTwoFactor,
+    'passwordSet': passwordSet,
   };
 
   User copyWith({
@@ -78,6 +86,7 @@ class User {
     bool? budgetAlertEmails,
     bool? weeklySummaryEmails,
     bool? loginTwoFactor,
+    bool? passwordSet,
   }) =>
       User(
         id: id,
@@ -92,5 +101,6 @@ class User {
         budgetAlertEmails: budgetAlertEmails ?? this.budgetAlertEmails,
         weeklySummaryEmails: weeklySummaryEmails ?? this.weeklySummaryEmails,
         loginTwoFactor: loginTwoFactor ?? this.loginTwoFactor,
+        passwordSet: passwordSet ?? this.passwordSet,
       );
 }

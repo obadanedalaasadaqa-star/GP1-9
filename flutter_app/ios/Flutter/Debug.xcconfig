@@ -1,2 +1,7 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "Generated.xcconfig"
+
+// Google sign-in (Phase 12). Real values: GoogleSignIn.xcconfig (gitignored, copy GoogleSignIn.example.xcconfig).
+GOOGLE_IOS_CLIENT_ID =
+GOOGLE_REVERSED_CLIENT_ID = com.nexus.flutterapp.google-unconfigured
+#include? "GoogleSignIn.xcconfig"

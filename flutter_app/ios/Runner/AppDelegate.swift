@@ -24,6 +24,20 @@ import UIKit
         result(AppDelegate.biometryStatus())
       }
     }
+    // Continue with Google: the iOS client ID that Xcode put in Info.plist
+    // from the gitignored GoogleSignIn.xcconfig. One read-only method for one
+    // key; the app checks the value before it ever calls Google.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NexusConfig") {
+      let channel = FlutterMethodChannel(
+        name: "nexus/config", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "googleClientId" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        result(Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String)
+      }
+    }
   }
 
   /// Why Face ID can or can't be used: the biometry type and the LAError code

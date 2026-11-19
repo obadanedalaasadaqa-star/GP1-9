@@ -4,6 +4,7 @@ import 'ai_models.dart';
 import 'budget_models.dart';
 import 'chat_chart.dart';
 import 'constants.dart';
+import 'google_sign_in_result.dart';
 import 'login_challenge.dart';
 import 'offline_cache.dart';
 import 'receipt_model.dart';
@@ -49,7 +50,11 @@ class ApiException implements Exception {
   /// True when our server answered with a JSON `{ "error": ... }` body.
   /// False for timeouts and non-JSON replies (e.g. an HTML 404 from the host).
   final bool fromServer;
-  ApiException(this.message, {this.statusCode, this.fromServer = false});
+
+  /// The server's machine-readable `code`, when it sent one (e.g.
+  /// `no_password`, `other_google`).
+  final String? code;
+  ApiException(this.message, {this.statusCode, this.fromServer = false, this.code});
   @override
   String toString() => message;
 }
@@ -115,10 +120,12 @@ class ApiClient {
     }
     if (res.statusCode >= 400) {
       final error = body['error'];
+      final code = body['code'];
       throw ApiException(
         error is String ? error : 'Request failed',
         statusCode: res.statusCode,
         fromServer: error is String,
+        code: code is String ? code : null,
       );
     }
     return body;
@@ -200,6 +207,53 @@ class ApiClient {
     final res = await _signedOutPost('/auth/reset-password',
         {'email': email, 'code': code, 'newPassword': newPassword});
     return _loginResult(_parse(res), email);
+  }
+
+  /// Continue with Google: trade Google's ID token for a Nexus session. On
+  /// the second try (after [GooglePasswordNeeded]) [password] is the Nexus
+  /// account's password. Other refusals (403 unverified Google email, 409
+  /// other Google account, 429, 503, 500) throw [ApiException] with the
+  /// server's text and `code`. [email] is the Google email (from Google's
+  /// sheet). A 2FA challenge names the stored Nexus email the server gives
+  /// (where the code is sent), and falls back to [email] only for an older
+  /// server that doesn't give one.
+  static Future<GoogleSignInResult> googleSignIn(String idToken, {String? password, String email = ''}) async {
+    final res = await _signedOutPost('/auth/google', {
+      'idToken': idToken,
+      'password': ?password,
+    });
+    if ((res.statusCode == 409 || res.statusCode == 401) && _codeOf(res) == 'password_required') {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return GooglePasswordNeeded(
+        email: body['email'] as String? ?? '',
+        message: body['error'] as String? ?? '',
+        wrongPassword: res.statusCode == 401,
+      );
+    }
+    final data = _parse(res);
+    final challenge = data['challengeToken'];
+    if (data['twoFactorRequired'] == true && challenge is String) {
+      final stored = data['email'];
+      return GoogleChallenge(LoginChallenge(
+        challengeToken: challenge,
+        email: stored is String && stored.isNotEmpty ? stored : email,
+      ));
+    }
+    return GoogleSession(
+      token: data['token'] as String,
+      user: User.fromJson(data['user'] as Map<String, dynamic>),
+      created: res.statusCode == 201 || data['created'] == true,
+    );
+  }
+
+  /// The `code` of a JSON error body, or null.
+  static String? _codeOf(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      return body is Map && body['code'] is String ? body['code'] as String : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// POST with no session (forgot / reset password). A timeout or a

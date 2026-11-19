@@ -1,0 +1,11 @@
+// Continue with Google: the iOS OAuth client of the Nexus Google Cloud project.
+//
+// 1. Copy this file to GoogleSignIn.xcconfig in this folder (that name is
+//    gitignored; never commit the copy, never paste its values in a note).
+// 2. In Google Cloud -> Google Auth Platform -> Clients -> the iOS client,
+//    copy the Client ID and the iOS URL scheme into the two lines below.
+//    No quotes (xcconfig keeps them literally).
+// 3. Rebuild the app. Without the file, or with these placeholders, the
+//    "Continue with Google" button stays hidden.
+GOOGLE_IOS_CLIENT_ID = paste-client-id-here.apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.paste-client-id-here
